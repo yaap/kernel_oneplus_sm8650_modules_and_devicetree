@@ -61,7 +61,8 @@ enum switch_vendor {
     FSA4480 = 0,
     HL5280,
     DIO4480,
-    WAS4780
+    WAS4780,
+    BCT4480
 };
 
 #ifdef OPLUS_ARCH_EXTENDS
@@ -98,6 +99,7 @@ struct fsa4480_priv {
 	/* add end for DP */
 
 #ifdef OPLUS_ARCH_EXTENDS
+	/* 2024/06/17, supporting type-c headphone detect bypass */
 	bool hp_bypass;
 #endif /*OPLUS_ARCH_EXTENDS*/
 
@@ -107,6 +109,7 @@ struct fsa4480_priv {
 };
 
 #ifdef OPLUS_ARCH_EXTENDS
+/* 2024/06/17, supporting type-c headphone detect bypass */
 int (*ptypec_ext_eint_handler)(bool plug_flag) = NULL;
 
 int typec_ext_eint_handler(bool plug_flag)
@@ -322,9 +325,21 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 			fsa4480_usbc_update_settings(fsa_priv, 0x00, 0x9F);
 			usleep_range(1000, 1005);
 			regmap_write(fsa_priv->regmap, FSA4480_FUN_EN, 0X0D);
-			usleep_range(4000, 4005);
-			regmap_read(fsa_priv->regmap, FSA4480_FUN_EN, &switch_status);
-			dev_info(dev, "%s: read reg[0x12] = %02x done.\n", __func__, switch_status);
+			for (i = 0;i < 10 ;i++) {
+				usleep_range(2000, 2005);
+				regmap_read(fsa_priv->regmap, FSA4480_FUN_EN, &switch_status);
+				if (switch_status == 0X0C) {
+					break;
+				}
+			}
+			if (switch_status == 0X0D) {
+				pr_err("%s: [WAS4780]Audio jack detection fail.\n", __func__);
+				return -EINVAL;
+			}
+			for (i = 4 ;i <= 7 ;i++) {
+				regmap_read(fsa_priv->regmap, i, &debug_reg[i]);
+			}
+			dev_info(dev,"%s dump reg:0x04:%02x,0x05:%02x,0x06:%02x,0x07:%02x\n",__func__,debug_reg[4],debug_reg[5],debug_reg[6],debug_reg[7]);
 		} else {
 			/* activate switches */
 			fsa4480_usbc_update_settings(fsa_priv, 0x00, 0x9F);
@@ -364,6 +379,7 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 
 		}
 #ifdef OPLUS_ARCH_EXTENDS
+		/* 2024/06/17, supporting type-c headphone detect bypass */
 		if (fsa_priv->hp_bypass) {
 			typec_ext_eint_handler(true);
 		} else {
@@ -379,11 +395,13 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 				dev_info(dev, "%s: after hs_det_pin state = %d.\n", __func__, state);
 			}
 #ifdef OPLUS_ARCH_EXTENDS
+		/* 2024/06/17, supporting type-c headphone detect bypass */
 		}
 #endif /*OPLUS_ARCH_EXTENDS*/
 	} else {
 		pr_info("plugout regulator_get_voltage(%d)\n", regulator_get_voltage(vio28_reg));
 #ifdef OPLUS_ARCH_EXTENDS
+		/* 2024/06/17, supporting type-c headphone detect bypass */
 		if (fsa_priv->hp_bypass) {
 			typec_ext_eint_handler(false);
 		} else {
@@ -397,6 +415,7 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 				dev_info(dev, "%s: after hs_det_pin state = %d.\n", __func__, state);
 			}
 #ifdef OPLUS_ARCH_EXTENDS
+		/* 2024/06/17, supporting type-c headphone detect bypass */
 		}
 #endif /*OPLUS_ARCH_EXTENDS*/
 		if (fsa_priv->vendor == DIO4480) {
@@ -620,6 +639,7 @@ static int fsa4480_parse_dt(struct fsa4480_priv *fsa_priv,
     int state = 0;
     int sense_to_ground = 0;
 #ifdef OPLUS_ARCH_EXTENDS
+    /* 2024/06/17, supporting type-c headphone detect bypass */
     int hp_bypass = 0;
 #endif
 
@@ -651,6 +671,7 @@ static int fsa4480_parse_dt(struct fsa4480_priv *fsa_priv,
 	}
 
 #ifdef OPLUS_ARCH_EXTENDS
+	/* 2024/06/17, supporting type-c headphone detect bypass */
 	ret = of_property_read_u32(dNode,
 				"fsa4480,hp-bypass", &hp_bypass);
 	if (ret) {
@@ -923,6 +944,9 @@ static int fsa4480_probe(struct i2c_client *i2c)
 	if (HL5280_DEVICE_REG_VALUE == reg_value) {
 		dev_info(fsa_priv->dev, "%s: switch chip is HL5280\n", __func__);
 		fsa_priv->vendor = HL5280;
+        } else if (0x09 == reg_value) {
+                dev_info(fsa_priv->dev, "%s: switch chip is BCT4480\n", __func__);
+                fsa_priv->vendor = BCT4480;
         } else if (0xF1 == reg_value) {
 		dev_info(fsa_priv->dev, "%s: switch chip is DIO4480\n", __func__);
 		fsa_priv->vendor = DIO4480;

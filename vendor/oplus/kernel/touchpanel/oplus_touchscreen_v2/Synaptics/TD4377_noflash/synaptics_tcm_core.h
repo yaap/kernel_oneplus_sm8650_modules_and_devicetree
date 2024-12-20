@@ -37,8 +37,9 @@
 #define SYNAPTICS_TCM_ID_PRODUCT (1 << 0)
 #define SYNAPTICS_TCM_ID_VERSION 0x0007
 
-#define RD_CHUNK_SIZE 0 /* read length limit in bytes, 0 = unlimited */
-#define WR_CHUNK_SIZE 1024 /* write length limit in bytes, 0 = unlimited */
+#define RD_CHUNK_SIZE 512 /* read length limit in bytes, 0 = unlimited */
+#define WR_CHUNK_SIZE 2049 /* write length limit in bytes, 0 = unlimited */
+#define WR_CHUNK_LENGHT 513
 
 #define MESSAGE_HEADER_SIZE 4
 #define MESSAGE_MARKER 0xa5

@@ -2328,6 +2328,7 @@ int ft3681_membist_test(struct seq_file *s, void *chip_data,
 	u8 tmp_data = 0;
 	u8 i = 0;
 	struct chip_data_ft3681 *ts_data = (struct chip_data_ft3681 *)chip_data;
+	u32 spi_speed = ts_data->ft_spi->max_speed_hz;
 
 	FTS_TEST_FUNC_ENTER();
 	FTS_TEST_SAVE_INFO("\n============ Test Item: Mem Bist Test\n");
@@ -2556,7 +2557,7 @@ test_err:
 
 
 	ft3681_fts_hw_reset(ts_data, 200);
-	fts_set_spi_max_speed(12000000, 1);
+	fts_set_spi_max_speed(spi_speed, 1);
 
 	/* result */
 	if ((tmp_soc_result) && (tmp_afe_result)) {

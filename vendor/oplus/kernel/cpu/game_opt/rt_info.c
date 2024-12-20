@@ -61,6 +61,11 @@ static bool is_render_thread(struct render_related_thread * wakee)
 	return false;
 }
 
+static bool is_sepcific_waker(void)
+{
+	return !strcmp(current->comm, "UnityMain");
+}
+
 static void try_to_wake_up_success_hook(void *unused, struct task_struct *task)
 {
 	struct render_related_thread *wakee;
@@ -75,7 +80,7 @@ static void try_to_wake_up_success_hook(void *unused, struct task_struct *task)
 
 	/*
 	 * ignore wakeup event if waker or wakee
-	 * not belong to render related thread group
+	 * not belong to a same game thread group.
 	 */
 	if (!same_rt_thread_group(current, task))
 		return;
@@ -88,7 +93,7 @@ static void try_to_wake_up_success_hook(void *unused, struct task_struct *task)
 		if (!same_rt_thread_group(current, task))
 			goto unlock;
 
-		/* wakee must be a render related thread */
+		/* wakee is a render related thread */
 		wakee = find_related_thread(task);
 		if (wakee) {
 			waker = find_related_thread(current);
@@ -104,8 +109,20 @@ static void try_to_wake_up_success_hook(void *unused, struct task_struct *task)
 				waker->wake_count++;
 			}
 
-			if (is_render_thread(wakee))
+			if (is_render_thread(wakee) || is_sepcific_waker())
 				wakee->wake_count++;
+		} else {
+			/* waker is a sepcific render related thread */
+			waker = find_related_thread(current);
+			if (waker && is_sepcific_waker()) {
+				if (total_num >= MAX_TID_COUNT)
+					goto unlock;
+				wakee = &related_threads[total_num];
+				wakee->pid = task->pid;
+				wakee->task = task;
+				wakee->wake_count = 1;
+				total_num++;
+			}
 		}
 
 unlock:

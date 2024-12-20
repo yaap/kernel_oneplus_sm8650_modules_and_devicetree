@@ -363,7 +363,6 @@ static int fhp_chip_get_irq_reason(void *priv, enum irq_reason *reason)
 
 	//reset == 0, ignore this type
 	if (!reset_reason) {
-		hbp_debug("hbp chip reset reason 00, normal state\n");
 		return 0;
 	}
 

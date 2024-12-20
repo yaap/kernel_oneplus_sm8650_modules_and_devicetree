@@ -35,7 +35,7 @@
 			qcom,supply-enable-load = <10000>;
 			qcom,supply-disable-load = <300>;
 			qcom,supply-pre-on-sleep = <1>;
-			qcom,supply-post-on-sleep = <15>;
+			qcom,supply-post-on-sleep = <5>;
 			qcom,supply-pre-off-sleep = <1>;
 		};
 	};

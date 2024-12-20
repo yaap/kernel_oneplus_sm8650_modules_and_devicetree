@@ -625,7 +625,9 @@ static int im_flag_set_handle(struct task_struct *task, int im_flag)
 	}
 #ifdef CONFIG_LOCKING_PROTECT
 	/* Optimization of ams/wsm lock contention */
-	LOCKING_CALL_OP(opt_ss_lock_contention, task, old_im, im_flag);
+	if ((!(test_bit(IM_FLAG_SS_LOCK_OWNER, &old_im) && (im_flag == IM_FLAG_SS_LOCK_OWNER))) ||
+		((test_bit(IM_FLAG_SS_LOCK_OWNER, &old_im) && im_flag == (IM_FLAG_SS_LOCK_OWNER+IM_FLAG_CLEAR))))
+		LOCKING_CALL_OP(opt_ss_lock_contention, task, old_im, im_flag);
 #endif
 	return 0;
 }

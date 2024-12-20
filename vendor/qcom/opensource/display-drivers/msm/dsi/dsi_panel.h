@@ -56,12 +56,33 @@ struct oplus_pwm_turbo_params {
 	bool oplus_pwm_switch_state_changed;
 	u32 pwm_bl_threshold;									/* qcom switch bl plus oplus,pwm-switch-backlight-threshold */
 	bool pwm_onepulse_support;
-	bool pwm_onepulse_enabled;
+	u32 pwm_onepulse_enabled;
 	bool pwm_switch_restore_support;
 	bool pwm_wait_te_tx;
 	bool directional_onepulse_switch;
 	bool pack_backlight;
 	bool pwm_switch_support_dc;
+	u32 oplus_dynamic_pulse;
+	u32 oplus_last_dynamic_pulse;
+	int oplus_pulse_mutual_fps_flag;
+	bool oplus_aod_mutual_fps_flag;
+	bool pwm_switch_support_extend_mode;
+	ktime_t aod_off_timestamp;
+	ktime_t into_aod_timestamp;
+};
+
+enum oplus_pwm_pulse {
+	THREE_EIGHTEEN_PULSE = 0,
+	ONE_EIGHTEEN_PULSE,
+	ONE_ONE_PULSE,
+};
+
+/* In 120hz general solution, L1, L2, L3 means 1 Pulse 3 Pulse and 18 Pulse */
+enum PWM_STATE {
+	PWM_STATE_L1 = 0,
+	PWM_STATE_L2,
+	PWM_STATE_L3,
+	PWM_STATE_MAXNUM,
 };
 #endif /* OPLUS_FEATURE_DISPLAY */
 
@@ -74,6 +95,7 @@ struct oplus_pwm_turbo_params {
 #define DSI_CMD_PPS_HDR_SIZE 7
 #define DSI_MODE_MAX 32
 
+#define INTO_OUT_AOD_INTERVOL (45*1000)
 /*
  * Defining custom dsi msg flag.
  * Using upper byte of flag field for custom DSI flags.

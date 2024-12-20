@@ -942,6 +942,8 @@ int sipa_speaker_enable(struct oplus_speaker_device *speaker_device, int enable)
 		scene = AUDIO_SCENE_RECEIVER;
 		break;
 	case WORK_MODE_MUSIC:
+	case WORK_MODE_LEFT:
+	case WORK_MODE_RIGHT:
 	default:
 		scene = AUDIO_SCENE_PLAYBACK;
 		break;

@@ -141,7 +141,7 @@
 		pinctrl-names = "si_pa_gpio";
 		pinctrl-0 = <&sia91xx_gpio_R>;
 		channel_num = <1>;
-		sipa_min_range = <5300>;
+		sipa_min_range = <5100>;
 		sipa_max_range = <7500>;
 		sipa_default_mohm = <6000>;
 		sipa_min_freq = <100>;

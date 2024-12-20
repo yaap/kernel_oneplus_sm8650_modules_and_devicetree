@@ -169,7 +169,7 @@
 
 	adspslpi_mem: adspslpi_region@9d400000 {
 		no-map;
-		reg = <0x0 0x9d400000 0x0 0x4200000>;
+		reg = <0x0 0x9d400000 0x0 0x3600000>;
 	};
 
 	q6_adsp_dtb_mem: q6_adsp_dtb_region@a0600000 {

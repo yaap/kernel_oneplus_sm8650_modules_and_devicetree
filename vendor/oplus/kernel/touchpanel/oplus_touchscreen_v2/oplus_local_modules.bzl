@@ -39,6 +39,24 @@ def define_oplus_local_modules():
     )
 
     define_oplus_ddk_module(
+        name = "oplus_bsp_tp_tcm_S3908",
+        srcs = native.glob([
+            "**/*.h",
+            "Synaptics/Syna_tcm_S3908/synaptics_tcm_S3908.c",
+            "Synaptics/Syna_tcm_S3908/synaptics_tcm_device_S3908.c",
+        ]),
+        ko_deps = [
+            "//vendor/oplus/kernel/touchpanel/oplus_touchscreen_v2:oplus_bsp_tp_custom",
+            "//vendor/oplus/kernel/touchpanel/oplus_touchscreen_v2:oplus_bsp_tp_common",
+            "//vendor/oplus/kernel/touchpanel/oplus_touchscreen_v2:oplus_bsp_tp_syna_common",
+        ],
+        includes = ["."],
+#        local_defines = ["CONFIG_REMOVE_OPLUS_FUNCTION"],
+	conditional_defines = {
+            "mtk":  ["CONFIG_TOUCHPANEL_MTK_PLATFORM","CONFIG_TOUCHPANEL_MULTI_NOFLASH"],
+        },
+    )
+    define_oplus_ddk_module(
         name = "oplus_bsp_tp_novatek_common",
         srcs = native.glob([
             "**/*.h",
@@ -328,6 +346,7 @@ def define_oplus_local_modules():
             "oplus_bsp_tp_ft3683g",
             "oplus_bsp_tp_syna_common",
             "oplus_bsp_tp_tcm_S3910",
+            "oplus_bsp_tp_tcm_S3908",
             "oplus_bsp_tp_td4377_noflash",
             "oplus_bsp_tp_novatek_common",
             "oplus_bsp_tp_nt36672c_noflash",

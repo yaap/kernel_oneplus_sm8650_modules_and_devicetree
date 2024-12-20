@@ -12,6 +12,7 @@
 #include <linux/workqueue.h>
 #include <linux/notifier.h>
 #include <linux/input.h>
+#include <linux/ktime.h>
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_KEYEVENT_HANDLER)
 #include "../../include/keyevent_handler.h"
 #endif
@@ -19,9 +20,14 @@
 #include "../../include/theia_send_event.h"
 #include "../../include/theia_bright_black_check.h"
 #endif
+
 #define CREATE_TRACE_POINTS
 #include "combkey_trace.h"
 #include <linux/time.h>
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FEEDBACK)
+#include <soc/oplus/dft/kernel_fb.h>
+#endif
 
 #define KEY_DOWN_VALUE 1
 #define KEY_UP_VALUE 0
@@ -35,10 +41,19 @@ static struct delayed_work g_check_pwrkey_long_press_work;
 #define COMBKEY_DCS_TAG      "CriticalLog"
 #define COMBKEY_DCS_EVENTID  "Theia"
 #define PWRKEY_LONG_PRESS    "TheiaPwkLongPress"
+#define BUTTON_DEBOUNCE_TYPE "10001"
 
 static bool is_pwrkey_down;
 static bool is_volumup_down;
 static bool is_volumup_pwrkey_down;
+static u64 pwrkey_press_count;
+static u64 volup_press_count;
+
+struct key_press_time_data {
+	u64 curr_down_time;
+	u64 curr_up_time;
+	u64 key_handle_interval;
+};
 
 static unsigned int combkey_monitor_events[] = {
 	KEY_POWER,
@@ -74,6 +89,12 @@ static void pwrkey_long_press_callback(struct work_struct *work)
 static int combkey_monitor_notifier_call(struct notifier_block *nb, unsigned long type, void *data)
 {
 	struct keyevent_notifier_param *param = data;
+	struct key_press_time_data pwr_tm_data;
+	struct key_press_time_data volup_tm_data;
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FEEDBACK)
+	char payload[1024] = {0x00};
+#endif
+
 	pr_info("called. event_code = %u, value = %d\n", param->keycode, param->down);
 
 	if (param->keycode == KEY_POWER) {
@@ -82,17 +103,47 @@ static int combkey_monitor_notifier_call(struct notifier_block *nb, unsigned lon
 			is_pwrkey_down = true;
 			set_pwk_flag(true);
 			pr_info("pwrkey pressed, call pwrkey monitor checker.\n");
+
+			pwr_tm_data.curr_down_time = ktime_to_ms(ktime_get());
+			pr_info("pwrkey pressed, call pwrkey monitor checker. curr_down_time = %llu\n", pwr_tm_data.curr_down_time);
 			black_screen_timer_restart();
 			bright_screen_timer_restart();
 		} else if (param->down == KEY_UP_VALUE) {
 			is_pwrkey_down = false;
+			pwr_tm_data.curr_up_time = ktime_to_ms(ktime_get());
+			pwr_tm_data.key_handle_interval = pwr_tm_data.curr_up_time - pwr_tm_data.curr_down_time;
+			pr_info("pwrkey key released, curr_up_time = %llu, key_handle_interval = %llu\n",
+						pwr_tm_data.curr_up_time, pwr_tm_data.key_handle_interval);
+			pwrkey_press_count++;
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FEEDBACK)
+			memset(payload, 0 , sizeof(payload));
+			scnprintf(payload, sizeof(payload),
+				"NULL$$EventField@@pwrkey$$FieldData@@cnt%llu$$detailData@@up_%llu,down_%llu,interval_%llu",
+				pwrkey_press_count, pwr_tm_data.curr_up_time, pwr_tm_data.curr_down_time, pwr_tm_data.key_handle_interval);
+			oplus_kevent_fb(FB_TRI_STATE_KEY, BUTTON_DEBOUNCE_TYPE, payload);
+#endif
 		}
 	} else if (param->keycode == KEY_VOLUMEUP) {
 		pr_info("volumup key handle enter\n");
-		if (param->down == KEY_DOWN_VALUE)
+		if (param->down == KEY_DOWN_VALUE) {
 			is_volumup_down = true;
-		else if (param->down == KEY_UP_VALUE)
+			volup_tm_data.curr_down_time = ktime_to_ms(ktime_get());
+			pr_info("volumup key pressed, curr_down_time = %llu\n", volup_tm_data.curr_down_time);
+		} else if (param->down == KEY_UP_VALUE) {
 			is_volumup_down = false;
+			volup_tm_data.curr_up_time = ktime_to_ms(ktime_get());
+			volup_tm_data.key_handle_interval = volup_tm_data.curr_up_time - volup_tm_data.curr_down_time;
+			pr_info("volumup key released, curr_up_time = %llu, key_handle_interval = %llu\n",
+						volup_tm_data.curr_up_time, volup_tm_data.key_handle_interval);
+			volup_press_count++;
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FEEDBACK)
+			memset(payload, 0 , sizeof(payload));
+			scnprintf(payload, sizeof(payload),
+				"NULL$$EventField@@volumeupkey$$FieldData@@cnt%llu$$detailData@@up_%llu,down_%llu,interval_%llu",
+				volup_press_count, volup_tm_data.curr_up_time, volup_tm_data.curr_down_time, volup_tm_data.key_handle_interval);
+			oplus_kevent_fb(FB_TRI_STATE_KEY, BUTTON_DEBOUNCE_TYPE, payload);
+#endif
+		}
 	}
 
 	/* combination key pressed, start to calculate duration */

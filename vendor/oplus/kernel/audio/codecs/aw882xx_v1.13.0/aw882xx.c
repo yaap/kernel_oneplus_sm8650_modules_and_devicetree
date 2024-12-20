@@ -114,6 +114,12 @@ static aw_snd_soc_codec_t *aw_get_codec(struct snd_soc_dai *dai)
 #endif
 }
 
+#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+static int speaker_mute_control = 0;
+static char const *spk_mute_ctrl_text[] = {"Off", "On"};
+static const struct soc_enum spk_mute_ctrl_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_mute_ctrl_text), spk_mute_ctrl_text);
+#endif
 
 /******************************************************
  *
@@ -372,10 +378,11 @@ static void aw882xx_start_pa(struct aw882xx *aw882xx)
 	aw_dev_info(aw882xx->dev, "enter");
 
 	if (aw882xx->fw_status == AW_DEV_FW_OK) {
+		#ifndef OPLUS_FEATURE_SPEAKER_MUTE
 		if (aw882xx->allow_pw == false) {
-			#ifdef OPLUS_ARCH_EXTENDS
-			aw_dev_info(aw882xx->dev, "Speaker_L or Speaker_R force mute, muting...");
-			#endif /* OPLUS_ARCH_EXTENDS */
+		#else
+		if (aw882xx->allow_pw == false || speaker_mute_control) {
+		#endif
 			aw_dev_info(aw882xx->dev, "dev can not allow power ");
 			return;
 		}
@@ -646,6 +653,69 @@ static const struct snd_kcontrol_new aw882xx_check_feedback[] = {
 };
 #endif /*OPLUS_FEATURE_MM_FEEDBACK*/
 
+#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+static int aw882xx_spk_mute_ctrl_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = speaker_mute_control;
+	return 0;
+}
+
+static int aw882xx_spk_mute_ctrl_set(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	int ret = 0;
+	struct aw_device *local_dev = NULL;
+	struct list_head *pos = NULL;
+	struct list_head *dev_list = NULL;
+	struct aw882xx *aw882xx = NULL;
+	int val = ucontrol->value.integer.value[0];
+
+	ret = aw882xx_dev_get_list_head(&dev_list);
+	if (ret < 0) {
+		aw_pr_err("get dev list failed");
+		return ret;
+	}
+
+	if (val == speaker_mute_control) {
+		aw_pr_info("Speaker mute is already %s\n", val == 1 ? "on" : "off");
+		return 1;
+	} else {
+		aw_pr_info("Speaker mute set to %s\n", val == 1 ? "on" : "off");
+		speaker_mute_control = val;
+	}
+
+	list_for_each(pos, dev_list) {
+		local_dev = container_of(pos, struct aw_device, list_node);
+		aw882xx = (struct aw882xx *)local_dev->private_data;
+		if (aw882xx->pstream) {
+			if (speaker_mute_control == 1) {
+				cancel_delayed_work_sync(&aw882xx->dc_work);
+				cancel_delayed_work_sync(&aw882xx->start_work);
+				mutex_lock(&aw882xx->lock);
+				aw882xx_device_stop(aw882xx->aw_pa);
+				mutex_unlock(&aw882xx->lock);
+				aw_dev_info(aw882xx->dev, "stop pa");
+			} else {
+				cancel_delayed_work_sync(&aw882xx->start_work);
+				mutex_lock(&aw882xx->lock);
+				if (aw882xx->fw_status == AW_DEV_FW_OK)
+					aw882xx_start_pa(aw882xx);
+				else
+					aw_dev_info(aw882xx->dev, "fw_load failed ,can not start PA");
+				mutex_unlock(&aw882xx->lock);
+			}
+		}
+	}
+	return 0;
+}
+
+static const struct snd_kcontrol_new aw882xx_snd_control_spk_mute[] = {
+	SOC_ENUM_EXT("Speaker_Mute_Switch", spk_mute_ctrl_enum,
+					aw882xx_spk_mute_ctrl_get, aw882xx_spk_mute_ctrl_set),
+};
+#endif
+
 static int aw882xx_mute(struct snd_soc_dai *dai, int mute, int stream)
 {
 	int ret = 0;
@@ -824,7 +894,11 @@ static int aw882xx_profile_set(struct snd_kcontrol *kcontrol,
 		  }
 	}
 	/*pstream = 0 no pcm just set status*/
+	#ifndef OPLUS_FEATURE_SPEAKER_MUTE
 	if (aw882xx->pstream && aw882xx->allow_pw) {
+	#else
+	if (aw882xx->pstream && aw882xx->allow_pw && !speaker_mute_control) {
+	#endif
 		aw882xx_device_stop(aw882xx->aw_pa);
 		aw882xx_start_pa(aw882xx);
 	}
@@ -1310,7 +1384,11 @@ static void aw882xx_irq_restart(struct aw882xx *aw882xx)
 			goto failed_exit;
 		}
 
+		#ifndef OPLUS_FEATURE_SPEAKER_MUTE
 		if (aw882xx->allow_pw && aw882xx->pstream) {
+		#else
+		if (aw882xx->allow_pw && aw882xx->pstream && !speaker_mute_control) {
+		#endif
 			ret = aw882xx_device_start(aw882xx->aw_pa);
 			if (ret) {
 				aw_dev_err(aw882xx->dev, "start failed");
@@ -2217,6 +2295,11 @@ static int aw882xx_codec_probe(aw_snd_soc_codec_t *aw_codec)
 	/*load cali re*/
 	aw882xx_dev_init_cali_re(aw882xx->aw_pa);
 #endif
+
+	#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+	snd_soc_add_component_controls(aw882xx->codec,
+		aw882xx_snd_control_spk_mute, ARRAY_SIZE(aw882xx_snd_control_spk_mute));
+	#endif
 
 	return 0;
 }

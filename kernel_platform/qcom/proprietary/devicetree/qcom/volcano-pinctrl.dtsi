@@ -120,6 +120,7 @@
 				pins = "gpio4";
 				drive-strength = <2>;
 				bias-pull-up;
+                                qcom,i2c_pull; /* 2.2k Pull up */
 			};
 		};
 
@@ -133,6 +134,7 @@
 				pins = "gpio5";
 				drive-strength = <2>;
 				bias-pull-up;
+                                qcom,i2c_pull; /* 2.2k Pull up */
 			};
 		};
 

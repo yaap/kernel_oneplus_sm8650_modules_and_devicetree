@@ -16,6 +16,7 @@
 #include <linux/cpuhotplug.h>
 #include <linux/cpumask.h>
 #include <linux/file.h>
+#include <linux/mm.h>
 
 #if IS_ENABLED(CONFIG_DRM_PANEL_NOTIFY) || IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 #include <linux/soc/qcom/panel_event_notifier.h>
@@ -1188,9 +1189,30 @@ static inline bool system_boosted(struct reclaim_control *unused)
 	return system_cur_avail_buffers() >= get_min_avail_buffers_value();
 }
 
+#define PAGES(size) ((size) >> PAGE_SHIFT)
+static inline bool is_anon_base_low(void)
+{
+	static unsigned long totalram;
+	static unsigned long threshold = 0;
+
+	if (unlikely(threshold == 0)) {
+		totalram = totalram_pages();
+		if (totalram > PAGES(SZ_4G + SZ_8G))
+			threshold = M2P(1000);
+		else if (totalram > PAGES(SZ_8G))
+			threshold = M2P(800);
+		else
+			threshold = M2P(600);
+	}
+
+	return global_node_page_state(NR_ACTIVE_ANON) + global_node_page_state(NR_INACTIVE_ANON) -
+		global_node_page_state(NR_ANON_THPS) < threshold;
+}
+
 static inline bool boost_reclaim(struct reclaim_control *rc, bool scan)
 {
 	unsigned long diff, free, boost;
+	unsigned long high, cur;
 
 	diff = 0;
 	/* sometimes reclam chp pages failed multitiems. disable reclaim chp temorarily */
@@ -1225,33 +1247,32 @@ static inline bool boost_reclaim(struct reclaim_control *rc, bool scan)
 	}
 
 reclaim_base:
-	/* if system is in low mem available, reclaim anon base page. */
-	if (!system_boosted(rc)) {
-		unsigned long high, cur;
+	/* if system has enough available or base anon pages is too low, don't do proactive compress */
+	if (system_boosted(rc) || is_anon_base_low())
+		return false;
 
-		if (scan)
-			return true;
+	if (scan)
+		return true;
 
-		high = get_high_avail_buffers_value();
-		cur = system_cur_avail_buffers();
-		if (cur < high)
-			diff = high - cur;
-		diff = min(diff, (unsigned long)get_swapd_max_reclaim_size());
-		/* convert mib to pages */
-		diff = M2P(diff);
+	high = get_high_avail_buffers_value();
+	cur = system_cur_avail_buffers();
+	if (cur < high)
+		diff = high - cur;
+	diff = min(diff, (unsigned long)get_swapd_max_reclaim_size());
+	/* convert mib to pages */
+	diff = M2P(diff);
 
-		if (diff > per_cycle_pages) {
-			rc->type = RT_PAGE;
-			rc->gfp_mask = GFP_KERNEL;
-			rc->min_cluster = SWAP_CLUSTER_MAX;
-			rc->to_reclaim = diff;
-			rc->boosted = system_boosted;
-			rc->interval = 1 * HZ;
-			rc->reclaimed = 0;
-			return true;
-		}
-	}
-	return false;
+	if (diff < per_cycle_pages)
+		return false;
+
+	rc->type = RT_PAGE;
+	rc->gfp_mask = GFP_KERNEL;
+	rc->min_cluster = SWAP_CLUSTER_MAX;
+	rc->to_reclaim = diff;
+	rc->boosted = system_boosted;
+	rc->interval = 1 * HZ;
+	rc->reclaimed = 0;
+	return true;
 }
 
 static unsigned long calc_each_memcg_pages(int type)
@@ -1649,10 +1670,10 @@ static void vh_tune_scan_type(void *data, enum scan_balance *s_balance)
 	}
 }
 
-static void vh_get_page_wmark(void *data, gfp_t alloc_flags,
-				unsigned long *page_wmark)
+static void vh_alloc_pages_slowpath(void *data, gfp_t gfp_flags,
+				unsigned int order, unsigned long delta)
 {
-	if (alloc_flags)
+	if (gfp_flags & __GFP_KSWAPD_RECLAIM)
 		wake_up_all_hybridswapds();
 }
 
@@ -1956,7 +1977,7 @@ void hybridswapd_chp_ops_init(struct hybridswapd_operations *ops)
 	ops->zram_watermark_ok = zram_watermark_ok;
 	ops->wakeup_kthreads = wake_up_all_hybridswapds;
 
-	ops->vh_get_page_wmark = vh_get_page_wmark;
+	ops->vh_alloc_pages_slowpath = vh_alloc_pages_slowpath;
 	ops->vh_tune_scan_type = vh_tune_scan_type;
 	ops->vh_shrink_slab_bypass = vh_shrink_slab_bypass;
 }

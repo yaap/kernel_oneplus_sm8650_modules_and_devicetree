@@ -35,6 +35,7 @@
 #define HBP_IOCTRL_TRIGGER_IFP			_IO(HBP_IOCTRL_GROUP, 0x12)
 #define HBP_IOCTRL_CLEAR_FIFO			_IO(HBP_IOCTRL_GROUP, 0x13)
 #define HBP_IOCTRL_SET_DEBUG_LEVEL		_IO(HBP_IOCTRL_GROUP, 0x14)
+#define HBP_IOCTRL_SET_BS_DATA_RECORD	_IO(HBP_IOCTRL_GROUP, 0x15)
 
 extern void hbp_state_notify(struct hbp_core *hbp, int id, hbp_panel_event event);
 extern void hbp_register_notify_cb(struct hbp_device *hbp_dev, struct device *dev);
@@ -814,7 +815,9 @@ static long hbp_ctrl_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigne
 		return -EFAULT;
 	}
 
-	hbp_debug("unlocked ioctl cmd: 0x%x\n", cmd);
+	if (cmd != HBP_IOCTRL_GET_FRAME) {
+		hbp_debug("unlocked ioctl cmd: 0x%x\n", cmd);
+	}
 
 	switch (cmd) {
 	case HBP_IOCTRL_POWER:
@@ -867,7 +870,11 @@ static long hbp_ctrl_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigne
 		break;
 	case HBP_IOCTRL_SET_DEBUG_LEVEL:
 		set_debug_level(usr.val);
+		hbp_info("debug_level:%d\n", usr.val);
+		break;
+	case HBP_IOCTRL_SET_BS_DATA_RECORD:
 		hbp_dev->debug.report_gesture_frm = (LOG_LEVEL_DEBUG == usr.val) ? true : false;
+		hbp_info("report_gesture_frm:%d\n", usr.val);
 		break;
 	default:
 		hbp_err("invalid cmd\n");

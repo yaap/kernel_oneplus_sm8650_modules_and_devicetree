@@ -209,7 +209,9 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
 
 #ifdef OPLUS_FEATURE_DISPLAY
+	mutex_lock(&c_bridge->display->display_lock);
 	oplus_panel_switch_vid_mode(c_bridge->display, &(c_bridge->dsi_mode));
+	mutex_unlock(&c_bridge->display->display_lock);
 #endif
 
 	/* By this point mode should have been validated through mode_fixup */

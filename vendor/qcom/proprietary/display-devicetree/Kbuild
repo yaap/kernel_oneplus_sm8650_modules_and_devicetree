@@ -34,15 +34,10 @@ dtbo-$(CONFIG_ARCH_KALAMA) += display/kalama-sde.dtbo \
 
 #PLUS_DTS_OVERLAY start
 dtbo-y += oplus/waffle-22825-display-pineapple-overlay.dtbo
-dtbo-y += oplus/pangu-22111-display-pineapple-overlay.dtbo
-dtbo-y += oplus/enzo-23607-display-pineapple-overlay.dtbo
 dtbo-y += oplus/audi-23803-display-cliffs-overlay.dtbo
-dtbo-y += oplus/bale-23609-display-cliffs-overlay.dtbo
 dtbo-y += oplus/caihong-23926-display-pineapple-overlay.dtbo
 dtbo-y += oplus/corvette-23814-display-pineapple-overlay.dtbo
-dtbo-y += oplus/divo-23631-display-pineapple-overlay.dtbo
 dtbo-y += oplus/giulia-23851-display-pineapple-overlay.dtbo
-dtbo-y += oplus/piaget-24607-display-volcano-overlay.dtbo
 #PLUS_DTS_OVERLAY end
 
 else

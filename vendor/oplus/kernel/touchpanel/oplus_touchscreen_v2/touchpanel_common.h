@@ -97,6 +97,7 @@
 #define HEALTH_REPORT_RST_PARITY    "parity_rst"
 #define HEALTH_REPORT_RST_WD        "wd_rst"
 #define HEALTH_REPORT_RST_OTHER     "other_rst"
+#define HEALTH_REPORT_GLOVE_ENTER	"glove_enterTimes"
 
 #define FINGERPRINT_DOWN_DETECT 0X0f
 #define FINGERPRINT_UP_DETECT 0X1f
@@ -219,6 +220,11 @@ typedef enum {
 	MODE_WATERPROOF,
 	MODE_LEATHER_COVER,
 } work_mode;
+
+typedef enum {
+	GLOVE_EXIT,
+	GLOVE_ENTER,
+} glove_status;
 
 typedef enum {
 	TP_BUS_I2C = 0,
@@ -790,6 +796,10 @@ struct monitor_data {
 	u64 screenon_timer;
 	u64 total_screenon_time;
 
+	u64 glove_en_timer;
+	u64 total_glove_en_time;
+	u64 glove_enter_count;
+
 	int auto_test_total_times;
 	int auto_test_failed_times;
 
@@ -1008,6 +1018,7 @@ struct touchpanel_data {
 	bool skip_reinit_device_support;                    /*spi need skip complete_all, prevent error in access reg*/
 	bool edge_pull_out_support;                         /*feature used to edge coordinates pull out*/
 	bool fpga_support;
+	bool disable_touch_event_support;                      /*feature to support underwater photo*/
 	/******For FW update area********/
 	bool loading_fw;                                    /*touchpanel FW updating*/
 	int firmware_update_type;                           /*firmware_update_type: 0=check firmware version 1=force update; 2=for FAE debug*/
@@ -1202,6 +1213,7 @@ struct touchpanel_data {
 	int cur_headset_state;                                /*current state of headset for usb*/
 
 	bool is_usb_checked;                                /*state of charger for tp*/
+	int disable_touch_event;                            /*disable touch event for underwater photo mode*/
 	int cur_usb_state;                                    /*current state of charger for usb*/
 	bool is_wireless_checked;                           /*state of wireless charger*/
 
@@ -1361,7 +1373,7 @@ struct oplus_touchpanel_operations {
 	void (*freq_hop_trigger)(void *chip_data); /*trigger frequency-hopping*/
 	void (*force_water_mode)(void *chip_data, bool enable); /*force enter water mode*/
 	void (*get_water_mode)(void *chip_data); /*force enter water mode*/
-	void (*get_glove_mode)(void *chip_data); /*force enter glove mode*/
+	void (*get_glove_mode)(void *chip_data, int *enable, int *count); /*force enter glove mode*/
 	void (*set_noise_modetest)(void *chip_data, bool enable);
 	uint8_t (*get_noise_modetest)(void *chip_data);
 	/*If the tp ic need do something, use this!*/

@@ -39,6 +39,8 @@ void get_cpufreq_info(bool *is_sample)
 		start_cpu = cluster[cls].start_cpu;
 		pol = cpufreq_cpu_get(start_cpu);
 		if (likely(pol)) {
+			if (!pol->freq_table)
+				return;
 			cur_idx = cpufreq_table_find_index(pol, pol->cur);
 			min_idx = cpufreq_table_find_index(pol, pol->min);
 			max_idx = cpufreq_table_find_index(pol, pol->max);

@@ -1219,7 +1219,7 @@ static void syna_set_trigger_reason(struct syna_tcm_hcd *tcm_hcd, irq_reason tri
 	SET_BIT(tcm_hcd->trigger_reason, trigger_reason);
 }
 
-static void syna_tcm_resize_chunk_size(struct syna_tcm_hcd *tcm_hcd)
+/*static void syna_tcm_resize_chunk_size(struct syna_tcm_hcd *tcm_hcd)
 {
 	unsigned int max_write_size;
 
@@ -1228,7 +1228,7 @@ static void syna_tcm_resize_chunk_size(struct syna_tcm_hcd *tcm_hcd)
 	if (tcm_hcd->wr_chunk_size == 0) {
 		tcm_hcd->wr_chunk_size = max_write_size;
 	}
-}
+}*/
 
 /**
  * syna_tcm_dispatch_report() - dispatch report received from device
@@ -1419,7 +1419,7 @@ static void syna_tcm_dispatch_message(struct syna_tcm_hcd *tcm_hcd)
 
 		UNLOCK_BUFFER(tcm_hcd->in);
 
-		syna_tcm_resize_chunk_size(tcm_hcd);
+		/*syna_tcm_resize_chunk_size(tcm_hcd);*/
 
 		TPD_DETAIL("Received identify report (firmware mode = 0x%02x)\n",
 			   tcm_hcd->id_info.mode);
@@ -2311,8 +2311,8 @@ static int syna_tcm_write_message_zeroflash(struct syna_tcm_hcd *tcm_hcd,
 	} else {
 		chunk_space = tcm_hcd->wr_chunk_size - 1;
 	}
-	if (command == CMD_ROMBOOT_DOWNLOAD) {
-		chunk_space = remaining_length;
+	if (command == CMD_DOWNLOAD_CONFIG) {
+		chunk_space = WR_CHUNK_LENGHT;
 	}
 
 	chunks = ceil_div(remaining_length, chunk_space);
@@ -2590,7 +2590,7 @@ static int syna_tcm_identify(struct syna_tcm_hcd *tcm_hcd, bool id)
 		goto exit;
 	}
 
-	syna_tcm_resize_chunk_size(tcm_hcd);
+	/*syna_tcm_resize_chunk_size(tcm_hcd);*/
 
 get_info:
 	if (IS_FW_MODE(tcm_hcd->id_info.mode)) {
@@ -4692,7 +4692,7 @@ void syna_tcm_hdl_done(struct syna_tcm_hcd *tcm_hcd)
 		TPD_INFO("failed to set normal mode\n");
 	}
 
-	/*enable_irq(tcm_hcd->s_client->irq);*/
+	enable_irq(tcm_hcd->s_client->irq);
 
 	/*syna_tcm_get_app_info(tcm_hcd);*/
 

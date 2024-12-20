@@ -52,6 +52,7 @@
 #define DEBUG_DYNAMIC_PREEMPT (1 << 5)
 #define DEBUG_AMU_INSTRUCTION (1 << 6)
 #define DEBUG_VERBOSE  (1 << 10)	/* used for frameboost */
+#define DEBUG_SET_SCHEDPROP (1 << 11) /* used for hmbird */
 
 /* define for sched assist feature */
 #define FEATURE_COMMON (1 << 0)

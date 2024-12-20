@@ -25,6 +25,7 @@
 #define PANEL_TX_MAX_BUF 512
 #define FFC_MODE_MAX_COUNT 4
 #define FFC_DELAY_MAX_FRAMES 10
+#define FILE_DESTROY 9
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 

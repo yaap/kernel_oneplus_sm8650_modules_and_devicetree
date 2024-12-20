@@ -40,6 +40,16 @@ inline void systrace_c_signed_printk(const char *msg, long val)
 	}
 }
 
+static void sched_setaffinity_early_hook(void *unused, struct task_struct *p,
+	const struct cpumask *in_mask, bool *skip)
+{
+	if (p->tgid == game_pid) {
+		pr_info("gameopt, %s: c_comm=%s, c_pid=%d, c_tgid=%d, comm=%s, pid=%d, tgid=%d, in_mask=%*pbl\n",
+			__func__, current->comm, current->pid, current->tgid, p->comm, p->pid, p->tgid,
+			cpumask_pr_args(in_mask));
+	}
+}
+
 static ssize_t debug_enable_proc_write(struct file *file,
 	const char __user *buf, size_t count, loff_t *ppos)
 {
@@ -53,6 +63,10 @@ static ssize_t debug_enable_proc_write(struct file *file,
 	ret = sscanf(page, "%d", &g_debug_enable);
 	if (ret != 1)
 		return -EINVAL;
+
+	if (g_debug_enable == 2) {
+		register_trace_android_vh_sched_setaffinity_early(sched_setaffinity_early_hook, NULL);
+	}
 
 	return count;
 }

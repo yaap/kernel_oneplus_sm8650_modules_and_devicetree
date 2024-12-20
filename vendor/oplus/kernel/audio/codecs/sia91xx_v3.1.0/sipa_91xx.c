@@ -481,6 +481,10 @@ int sia91xx_dsp_start(sipa_dev_t *si_pa, int stream)
 	return 0;
 }
 
+#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+extern int speaker_mute_control;
+#endif /* OPLUS_FEATURE_SPEAKER_MUTE */
+
 int sia91xx_mute(
 	struct snd_soc_dai *dai,
 	int mute,
@@ -527,6 +531,13 @@ int sia91xx_mute(
 			}
 		} else {
 			si_pa->sipa_on = true;
+#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+// Add for spk mute ctrl
+			if (speaker_mute_control) {
+				pr_info("[debug][%s] %s: pa is mute on, direct return!\n", LOG_FLAG, __func__);
+				return 0;
+			}
+#endif /* OPLUS_FEATURE_SPEAKER_MUTE */
 			sipa_reg_init(si_pa);
 			if (sia91xx_dsp_start(si_pa, stream))
 				return -SIPA_ERROR_SOFT_MUTE;

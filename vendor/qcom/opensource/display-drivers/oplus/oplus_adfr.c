@@ -1523,14 +1523,12 @@ static int oplus_adfr_min_fps_update(void *dsi_display, unsigned int min_fps)
 			}
 		}
 	} else {
-		if (oplus_panel_get_pwm_switch_support_dc(display->panel)
-				&& oplus_panel_pwm_onepulse_is_enabled(display->panel)) {
+		if (oplus_panel_pwm_get_pulse_state() == PWM_STATE_L1) {
 			rc = oplus_adfr_display_cmd_set(display, DSI_CMD_BIGDC_ADFR_MIN_FPS_0 + i);
 			if (rc) {
 				ADFR_ERR("[%s] failed to send DSI_CMD_BIGDC_ADFR_MIN_FPS_%d cmds, rc=%d\n", display->name, i, rc);
 			}
-		} else if (oplus_panel_get_pwm_switch_state(display->panel) == PWM_SWITCH_HPWM_STATE
-				|| oplus_panel_pwm_onepulse_is_used(display->panel)) {
+		} else if (oplus_panel_pwm_get_pulse_state() == PWM_STATE_L3) {
 			rc = oplus_adfr_display_cmd_set(display, DSI_CMD_HPWM_ADFR_MIN_FPS_0 + i);
 			if (rc) {
 				ADFR_ERR("[%s] failed to send DSI_CMD_HPWM_ADFR_MIN_FPS_%d cmds, rc=%d\n", display->name, i, rc);
@@ -5449,14 +5447,12 @@ static int oplus_adfr_high_precision_fps_update(void *dsi_display, unsigned int 
 	}
 
 	/* send the commands to set high precision fps */
-	if (oplus_panel_get_pwm_switch_support_dc(display->panel)
-			&& oplus_panel_pwm_onepulse_is_enabled(display->panel)) {
+	if (oplus_panel_pwm_get_pulse_state() == PWM_STATE_L1) {
 		rc = oplus_adfr_display_cmd_set(display, DSI_CMD_BIGDC_ADFR_HIGH_PRECISION_FPS_0 + i);
 		if (rc) {
 			ADFR_ERR("[%s] failed to send DSI_CMD_BIGDC_ADFR_HIGH_PRECISION_FPS_%d cmds, rc=%d\n", display->name, i, rc);
 		}
-	} else if (oplus_panel_get_pwm_switch_state(display->panel) == PWM_SWITCH_HPWM_STATE
-			|| oplus_panel_pwm_onepulse_is_used(display->panel)) {
+	} else if (oplus_panel_pwm_get_pulse_state() == PWM_STATE_L3) {
 		rc = oplus_adfr_display_cmd_set(display, DSI_CMD_HPWM_ADFR_HIGH_PRECISION_FPS_0 + i);
 		if (rc) {
 			ADFR_ERR("[%s] failed to send DSI_CMD_HPWM_ADFR_HIGH_PRECISION_FPS_%d cmds, rc=%d\n", display->name, i, rc);
@@ -5596,7 +5592,7 @@ int oplus_adfr_high_precision_handle(void *sde_enc_v)
 			stabilize_frame_type = oplus_adfr_get_stabilize_frame_type(display);
 			if ((priv_info->oplus_adfr_sw_stabilize_frame_config_table_count)
 				&& (stabilize_frame_type == OPLUS_ADFR_SW_STABILIZE_FRAME)
-				&& (oplus_panel_get_pwm_switch_state(display->panel) == PWM_SWITCH_DC_STATE)
+				&& (oplus_panel_pwm_get_pulse_state() == PWM_STATE_L2)
 				&& (!oplus_panel_pwm_onepulse_is_used(display->panel))
 				&& p_oplus_adfr_params->osync_min_fps) {
 					oplus_adfr_high_precision_update_te_shift(display);

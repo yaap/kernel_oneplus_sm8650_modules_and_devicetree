@@ -472,13 +472,13 @@ static int do_execveat_common_entry_handler(struct kretprobe_instance *ri, struc
 		goto out_free;
 	}
 
-	if(uid_eq(current_uid(), GLOBAL_ROOT_UID)) {
+	if(!uid_eq(current_uid(), GLOBAL_ROOT_UID)) {
 		pr_err(SECUREGUARD_NEW "LIKE:guard: detect abnormal ROOT exec (%s).\n", absolute_path);
 		oplus_report_execveat_new(absolute_path, "execve_report");
 	} else {
 		oplus_report_execveat_new(absolute_path, "execve_block");
 		pr_err(SECUREGUARD_NEW "LIKE:guard: detect abnormal current_uid not 0 so need kill! (%s).\n", absolute_path);
-		send_sig(SIGKILL, current, 0);
+		/*send_sig(SIGKILL, current, 0);*/
 		goto out_free;
 	}
 

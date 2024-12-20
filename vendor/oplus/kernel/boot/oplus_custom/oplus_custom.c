@@ -85,6 +85,7 @@ static int opluscustom_read(struct opluscustom_data *data)
 	struct iov_iter iter;
 	struct kvec iov;
 	int read_size = 0;
+	int ret = 0;
 
 	bdev = get_opluscustom_partition_bdev();
 	if (!bdev) {
@@ -110,7 +111,8 @@ static int opluscustom_read(struct opluscustom_data *data)
 
 	if (read_size <= 0) {
 		printk("read failed\n");
-		return 1;
+		ret = -1;
+		goto do_blkdev_put;
 	}
 
 	if(D_OPLUS_CUST_PART_MAGIC_NUM != pConfigInf->nmagicnum1) {
@@ -119,7 +121,15 @@ static int opluscustom_read(struct opluscustom_data *data)
 	if(D_OPLUS_CUST_PART_CONFIG_MAGIC_NUM != pConfigInf->nmagicnum2) {
 		printk("opluscustom_read OPLUS_CUSTOM partition with error config magic number nmagicnum2:0x%x!\n", pConfigInf->nmagicnum2);
 	}
-	return 0;
+
+do_blkdev_put:
+	if (bdev) {
+		blkdev_put(bdev, THIS_MODULE);
+		bdev = NULL;
+		printk("Put device\n");
+	}
+
+	return ret;
 }
 
 static int blkdev_fsync(struct file *filp, loff_t start, loff_t end,
@@ -197,7 +207,7 @@ static int opluscustom_write(struct opluscustom_data *data)
 	/* filp_close(&dev_map_file, NULL); */
 
 	if (bdev) {
-		blkdev_put(bdev, NULL);
+		blkdev_put(bdev, THIS_MODULE);
 		bdev = NULL;
 		printk("Put device\n");
 	}

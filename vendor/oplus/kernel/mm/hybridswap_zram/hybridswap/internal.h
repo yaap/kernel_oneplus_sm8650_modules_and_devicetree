@@ -591,8 +591,8 @@ struct hybridswapd_operations {
 	void (*wakeup_kthreads)(void);
 	void (*update_memcg_param)(struct mem_cgroup *memcg);
 
-	void (*vh_get_page_wmark)(void *data, gfp_t alloc_flags,
-				unsigned long *page_wmark);
+	void (*vh_alloc_pages_slowpath)(void *data, gfp_t gfp_flags,
+				unsigned int order, unsigned long delta);
 	void (*vh_tune_scan_type)(void *data, enum scan_balance *s_balance);
 	void (*vh_shrink_slab_bypass)(void *data, gfp_t gfp_mask, int nid,
 				      struct mem_cgroup *memcg, int priority,

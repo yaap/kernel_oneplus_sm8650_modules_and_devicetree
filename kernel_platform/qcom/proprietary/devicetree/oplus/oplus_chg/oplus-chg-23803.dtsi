@@ -981,6 +981,7 @@
 						1400 4500>;
 
 		oplus_spec,vooc_multistep_initial_batt_temp = <1000>;
+		oplus_spec,vooc_little_cool_high_temp = <200>;
 		oplus_spec,vooc_little_cool_temp = <200>;
 		oplus_spec,vooc_cool_temp = <120>;
 		oplus_spec,vooc_little_cold_temp = <50>;

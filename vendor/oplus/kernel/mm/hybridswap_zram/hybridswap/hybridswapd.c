@@ -1847,10 +1847,10 @@ static void vh_tune_scan_type(void *data, enum scan_balance *s_balance)
 #endif
 }
 
-static void vh_get_page_wmark(void *data, gfp_t alloc_flags,
-				unsigned long *page_wmark)
+static void vh_alloc_pages_slowpath(void *data, gfp_t gfp_flags,
+		unsigned int order, unsigned long delta)
 {
-	if (alloc_flags)
+	if (gfp_flags & __GFP_KSWAPD_RECLAIM)
 		wake_all_swapd();
 }
 
@@ -2161,7 +2161,7 @@ void hybridswapd_ops_init(struct hybridswapd_operations *ops)
 	ops->zram_total_pages = get_nr_zram_total;
 	ops->wakeup_kthreads = wake_all_swapd;
 
-	ops->vh_get_page_wmark = vh_get_page_wmark;
+	ops->vh_alloc_pages_slowpath = vh_alloc_pages_slowpath;
 	ops->vh_tune_scan_type = vh_tune_scan_type;
 	ops->vh_shrink_slab_bypass = vh_shrink_slab_bypass;
 }

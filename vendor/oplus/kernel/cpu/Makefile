@@ -15,3 +15,4 @@ obj-$(CONFIG_OPLUS_FEATURE_SLC)        += oplus_slc/
 obj-$(CONFIG_OPLUS_OMRG)        += oplus_omrg/
 obj-$(CONFIG_OPLUS_FEATURE_ABNORMAL_FLAG) += oplus_overload/
 obj-$(CONFIG_OPLUS_FEATURE_WAKER_IDENTIFY) += waker_identify/
+obj-$(CONFIG_OPLUS_FEATURE_CPU_GAME) += oplus_game/

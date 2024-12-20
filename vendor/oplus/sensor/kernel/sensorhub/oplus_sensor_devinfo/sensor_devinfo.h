@@ -86,6 +86,8 @@ enum panel_id{
 	FT8057P,
 	P_7,
 	ILI7807S,
+	DH_SOFT_LIGHT,
+	NT36532W,
 	PANEL_NUM
 };
 

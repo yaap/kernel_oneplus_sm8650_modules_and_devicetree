@@ -131,7 +131,7 @@
 				qcom,default-led-trigger = "flash0_trigger";
 				qcom,id = <0>;
 				qcom,duration-ms = <1280>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_flash1: qcom,flash_1 {
@@ -141,7 +141,7 @@
 				qcom,default-led-trigger = "flash1_trigger";
 				qcom,id = <1>;
 				qcom,duration-ms = <1280>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_flash2: qcom,flash_2 {
@@ -151,7 +151,7 @@
 				qcom,default-led-trigger = "flash2_trigger";
 				qcom,id = <2>;
 				qcom,duration-ms = <1280>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_flash3: qcom,flash_3 {
@@ -161,7 +161,7 @@
 				qcom,default-led-trigger = "flash3_trigger";
 				qcom,id = <3>;
 				qcom,duration-ms = <1280>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_torch0: qcom,torch_0 {
@@ -170,7 +170,7 @@
 				qcom,max-current-ma = <500>;
 				qcom,default-led-trigger = "torch0_trigger";
 				qcom,id = <0>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_torch1: qcom,torch_1 {
@@ -179,7 +179,7 @@
 				qcom,max-current-ma = <500>;
 				qcom,default-led-trigger = "torch1_trigger";
 				qcom,id = <1>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_torch2: qcom,torch_2 {
@@ -188,7 +188,7 @@
 				qcom,max-current-ma = <500>;
 				qcom,default-led-trigger = "torch2_trigger";
 				qcom,id = <2>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_torch3: qcom,torch_3 {
@@ -197,7 +197,7 @@
 				qcom,max-current-ma = <500>;
 				qcom,default-led-trigger = "torch3_trigger";
 				qcom,id = <3>;
-				qcom,ires-ua = <12500>;
+				qcom,ires-ua = <5000>;
 			};
 
 			pmxr2230_switch0: qcom,led_switch_0 {

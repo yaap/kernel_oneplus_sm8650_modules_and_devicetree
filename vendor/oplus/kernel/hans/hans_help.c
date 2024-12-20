@@ -286,6 +286,30 @@ void send_signal_handler(void *data, int sig, struct task_struct *killer, struct
 
 }
 
+/* to adapt "fg_todo" binder proc in worklist */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0))
+static inline struct list_head *get_proc_fg_todo_list(struct binder_proc *proc)
+{
+	struct oplus_binder_proc *obp = NULL;
+
+	if (IS_ERR_OR_NULL(proc)) {
+		return NULL;
+	}
+
+	obp = (struct oplus_binder_proc *)(proc->android_oem_data1);
+	if (IS_ERR_OR_NULL(obp)) {
+		return NULL;
+	}
+
+	return (&obp->fg_todo);
+}
+#else
+static inline struct list_head *get_proc_fg_todo_list(struct binder_proc *proc)
+{
+	return NULL;
+}
+#endif
+
 static void get_uid_pid(int *from_pid, int *from_uid, int *to_pid, int *to_uid, struct binder_transaction *tr)
 {
 	/* from pid/uid */
@@ -328,6 +352,7 @@ void hans_check_uid_proc_status_detail(struct binder_proc *proc, enum message_ty
 	bool empty = true;
 	int need_reply = -1;
 	struct binder_work *w = NULL;
+	struct list_head *fg_todo = NULL;
 
 	/*check binder_thread/transaction_stack/binder_proc ongoing transaction*/
 	binder_inner_proc_lock(proc);
@@ -404,14 +429,14 @@ void hans_check_uid_proc_status_detail(struct binder_proc *proc, enum message_ty
 				spin_lock(&btrans->lock);
 				get_uid_pid(&from_pid, &from_uid, &to_pid, &to_uid, btrans);
 				need_reply = (int)(!(btrans->flags & TF_ONE_WAY));
-				if (btrans->to_thread != NULL && btrans->to_thread == thread && (!(btrans->flags & TF_ONE_WAY))) {
+				if (btrans->to_thread != NULL && (!(btrans->flags & TF_ONE_WAY))) {
 					spin_unlock(&btrans->lock);
 					if (from_uid != to_uid) {
 						binder_inner_proc_unlock(proc);
 						hans_report(type, from_pid, from_uid, to_pid, to_uid, "FROZEN_TRANS_PROC1", need_reply);
 						return;
 					} else {
-						printk(KERN_ERR "HANS binder: internal uid %d:%d->%d\n", to_uid, from_pid, to_pid);
+						printk(KERN_ERR "HANS binder: internal uid %d:%d->%d in proc_todo list\n", to_uid, from_pid, to_pid);
 					}
 				} else if (!(btrans->flags & TF_ONE_WAY)) {
 					/*binder thread is full, anyway, there is a sync binder, should unfreeze it*/
@@ -431,6 +456,50 @@ void hans_check_uid_proc_status_detail(struct binder_proc *proc, enum message_ty
 			}
 		}
 	}
+
+	/* to adapt "fg_todo" binder proc in worklist */
+	fg_todo = get_proc_fg_todo_list(proc);
+	if (IS_ERR_OR_NULL(fg_todo)) {
+		empty = true;
+	} else {
+		empty = binder_worklist_empty_ilocked(fg_todo);
+	}
+
+	if (proc->tsk != NULL && !empty) {
+		list_for_each_entry(w, fg_todo, entry) {
+			btrans = container_of(w, struct binder_transaction, work);
+			if (w != NULL && w->type == BINDER_WORK_TRANSACTION && btrans != NULL) {
+				spin_lock(&btrans->lock);
+				get_uid_pid(&from_pid, &from_uid, &to_pid, &to_uid, btrans);
+				need_reply = (int)(!(btrans->flags & TF_ONE_WAY));
+				if (btrans->to_thread != NULL && (!(btrans->flags & TF_ONE_WAY))) {
+					spin_unlock(&btrans->lock);
+					if (from_uid != to_uid) {
+						binder_inner_proc_unlock(proc);
+						hans_report(type, from_pid, from_uid, to_pid, to_uid, "FROZEN_TRANS_FG_PROC1", need_reply);
+						return;
+					} else {
+						printk(KERN_ERR "HANS binder: internal uid %d:%d->%d in fg_todo list\n", to_uid, from_pid, to_pid);
+					}
+				} else if (!(btrans->flags & TF_ONE_WAY)) {
+					/*binder thread is full, anyway, there is a sync binder, should unfreeze it*/
+					spin_unlock(&btrans->lock);
+					binder_inner_proc_unlock(proc);
+					hans_report(type, -1, -1, -1, to_uid, "FROZEN_TRANS_FG_PROC2", 1);
+					return;
+
+				} else {
+					spin_unlock(&btrans->lock);
+				}
+			} else if (w != NULL && w->type != BINDER_WORK_TRANSACTION_COMPLETE && w->type != BINDER_WORK_NODE) {
+				/* under binder error/dead status, to_proc could be null, user "-1" instead uid/pid */
+				binder_inner_proc_unlock(proc);
+				hans_report(type, -1, -1, -1, to_uid, "FROZEN_TRANS_FG_PROC3", 1);
+				return;
+			}
+		}
+	}
+
 	binder_inner_proc_unlock(proc);
 }
 
@@ -443,6 +512,7 @@ static void hans_check_uid_proc_status(struct binder_proc *proc,
 	bool empty = true;
 	bool found = false;
 	struct binder_work *w = NULL;
+	struct list_head *fg_todo = NULL;
 
 	/* check binder_thread/transaction_stack/binder_proc ongoing transaction */
 	binder_inner_proc_lock(proc);
@@ -509,6 +579,35 @@ static void hans_check_uid_proc_status(struct binder_proc *proc,
 		if (found == true) {
 			binder_inner_proc_unlock(proc);
 			hans_report(type, -1, -1, -1, uid, "FROZEN_TRANS_PROC", 1);
+			return;
+		}
+	}
+
+	/* to adapt "fg_todo" binder proc in worklist */
+	fg_todo = get_proc_fg_todo_list(proc);
+	if (IS_ERR_OR_NULL(fg_todo)) {
+		empty = true;
+	} else {
+		empty = binder_worklist_empty_ilocked(fg_todo);
+	}
+
+	if (!empty) {
+		list_for_each_entry(w, fg_todo, entry) {
+			if (w != NULL && w->type == BINDER_WORK_TRANSACTION) {
+				btrans = container_of(w, struct binder_transaction, work);
+				if (btrans != NULL && (!(btrans->flags & TF_ONE_WAY))) {
+					found = true;
+					break;
+				}
+			} else if (w != NULL && w->type != BINDER_WORK_TRANSACTION_COMPLETE && w->type != BINDER_WORK_NODE) {
+				found = true;
+				break;
+			}
+		}
+
+		if (found == true) {
+			binder_inner_proc_unlock(proc);
+			hans_report(type, -1, -1, -1, uid, "FROZEN_TRANS_FG_PROC", 1);
 			return;
 		}
 	}

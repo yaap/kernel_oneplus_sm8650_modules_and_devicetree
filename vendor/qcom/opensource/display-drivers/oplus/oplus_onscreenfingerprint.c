@@ -495,6 +495,31 @@ bool oplus_ofp_video_mode_aod_fod_is_enabled(void)
 	return (bool)(OPLUS_OFP_GET_VIDEO_MODE_AOD_FOD_CONFIG(p_oplus_ofp_params->fp_type));
 }
 
+bool oplus_ofp_need_to_do_aod_off_compensation(void)
+{
+	struct oplus_ofp_params *p_oplus_ofp_params = oplus_ofp_get_params(oplus_ofp_display_id);
+
+	OFP_DEBUG("start\n");
+
+	if (!p_oplus_ofp_params) {
+		OFP_ERR("Invalid params\n");
+		return false;
+	}
+
+	if (!oplus_ofp_is_supported()) {
+		OFP_DEBUG("ofp is not supported\n");
+		return false;
+	}
+
+	OFP_DEBUG("end\n");
+
+	return (bool)((p_oplus_ofp_params->longrui_aod_config & OPLUS_OFP_A_MIRROR_TO_THE_END_AOD_CONFIG)
+					&& (p_oplus_ofp_params->longrui_aod_mode & OPLUS_OFP_A_MIRROR_TO_THE_END_AOD_MODE)
+						&& (p_oplus_ofp_params->longrui_aod_mode & OPLUS_OFP_INSPIRATIONAL_PHOTO_FRAME)
+							&& p_oplus_ofp_params->aod_light_mode
+								&& (!p_oplus_ofp_params->fp_press && !p_oplus_ofp_params->doze_active));
+}
+
 bool oplus_ofp_get_hbm_state(void)
 {
 	struct oplus_ofp_params *p_oplus_ofp_params = oplus_ofp_get_params(oplus_ofp_display_id);
@@ -3404,6 +3429,51 @@ int oplus_ofp_aod_off_hbm_on_delay_check(void *sde_encoder_phys)
 	return 0;
 }
 
+int oplus_ofp_aod_off_cmdq_delay_check(void *dsi_panel)
+{
+	unsigned int time_interval = 0;
+	unsigned int delay_us = 0;
+	struct dsi_panel *panel = dsi_panel;
+	struct oplus_ofp_params *p_oplus_ofp_params = oplus_ofp_get_params(oplus_ofp_display_id);
+
+	OFP_DEBUG("start\n");
+
+	if (!oplus_ofp_is_supported()) {
+		OFP_DEBUG("ofp is not supported\n");
+		return 0;
+	}
+
+	if (!panel || !p_oplus_ofp_params) {
+		OFP_ERR("Invalid input params\n");
+		return -EINVAL;
+	}
+
+	if (!panel->cur_mode || !panel->cur_mode->priv_info) {
+		OFP_ERR("Invalid cur_mode params\n");
+		return -EINVAL;
+	}
+
+	if (!(oplus_ofp_need_to_do_aod_off_compensation() && panel->cur_mode->priv_info->cmd_sets[DSI_CMD_AOD_OFF_COMPENSATION].count)) {
+		OFP_DEBUG("no need to check aod off cmdq delay\n");
+		return 0;
+	}
+
+	OPLUS_OFP_TRACE_BEGIN("oplus_ofp_aod_off_cmdq_delay_check");
+
+	time_interval = ktime_to_ms(ktime_sub(ktime_get(), p_oplus_ofp_params->aod_off_cmd_timestamp));
+	if (time_interval < 70) {
+		delay_us = (70 - time_interval) * 1000;
+		OFP_INFO("wait %u us to separate aod off cmds and next cmdq cmds\n", delay_us);
+		usleep_range(delay_us, (delay_us + 10));
+	}
+
+	OPLUS_OFP_TRACE_END("oplus_ofp_aod_off_cmdq_delay_check");
+
+	OFP_DEBUG("end\n");
+
+	return 0;
+}
+
 /*
  since setting the backlight while the aod layer is exist will cause splash issue,
  the backlight will be filtered at this time and restored after the aod layer disappears
@@ -3449,7 +3519,21 @@ int oplus_ofp_aod_off_backlight_recovery(void *sde_encoder_virt)
 	hbm_enable = sde_connector_get_property(c_conn->base.state, CONNECTOR_PROP_HBM_ENABLE);
 	new_aod_layer_status = hbm_enable & OPLUS_OFP_PROPERTY_AOD_LAYER;
 
-	if (last_aod_layer_status && !new_aod_layer_status) {
+	if ((!strcmp(display->panel->oplus_priv.vendor_name, "AC223")) &&  (hbm_enable & OPLUS_OFP_PROPERTY_FINGERPRESS_LAYER)) {
+		if (p_oplus_ofp_params->panel_hbm_status || new_aod_layer_status) {
+		if (last_aod_layer_status && !new_aod_layer_status) {
+			OFP_INFO("AC223 recovery backlight level after aod off\n");
+			mutex_lock(&display->panel->panel_lock);
+			rc = dsi_panel_set_backlight(display->panel, display->panel->bl_config.bl_level);
+			if (rc) {
+			OFP_ERR("unable to set backlight\n");
+			}
+			mutex_unlock(&display->panel->panel_lock);
+		}
+		last_aod_layer_status = new_aod_layer_status;
+		}
+	} else {
+		if (last_aod_layer_status && !new_aod_layer_status) {
 		OFP_INFO("recovery backlight level after aod off\n");
 		mutex_lock(&display->panel->panel_lock);
 		rc = dsi_panel_set_backlight(display->panel, display->panel->bl_config.bl_level);
@@ -3458,8 +3542,8 @@ int oplus_ofp_aod_off_backlight_recovery(void *sde_encoder_virt)
 		}
 		mutex_unlock(&display->panel->panel_lock);
 	}
-
 	last_aod_layer_status = new_aod_layer_status;
+	}
 
 	OPLUS_OFP_TRACE_END("oplus_ofp_aod_off_backlight_recovery");
 

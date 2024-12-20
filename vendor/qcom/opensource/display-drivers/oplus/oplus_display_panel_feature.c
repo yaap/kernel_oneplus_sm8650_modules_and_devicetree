@@ -290,7 +290,15 @@ void oplus_panel_update_backlight(struct dsi_panel *panel,
 
 	if (panel->oplus_priv.dimming_setting_before_bl_0_enable) {
 		if (bl_lvl == 0) {
-			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_DIMMING_SETTING);
+			if (!strcmp(panel->name, "AA577 P 3 A0020 dsc cmd mode panel")) {
+				if (oplus_last_backlight > 0) {
+					rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_DIMMING_SETTING);
+					oplus_sde_early_wakeup(panel);
+					oplus_wait_for_vsync(panel);
+				}
+			} else {
+				rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_DIMMING_SETTING);
+			}
 		}
 	}
 #endif

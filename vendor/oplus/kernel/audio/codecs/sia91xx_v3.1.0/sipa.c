@@ -2173,6 +2173,68 @@ static int sipa_reg_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+// Add for spk mute ctrl
+int speaker_mute_control = 0;
+static char const *spk_mute_ctrl_text[] = {"Off", "On"};
+static const struct soc_enum spk_mute_ctrl_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_mute_ctrl_text), spk_mute_ctrl_text);
+
+static int sipa_spk_mute_ctrl_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = speaker_mute_control;
+	return 0;
+}
+
+static int sipa_spk_mute_ctrl_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(4, 16, 28))
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	sipa_dev_t *si_pa = snd_soc_component_get_drvdata(component);
+#else
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
+	sipa_dev_t *si_pa = snd_soc_codec_get_drvdata(codec);
+#endif
+
+	int val = ucontrol->value.integer.value[0];
+
+	pr_warn("channle %d, Speaker mute set to %s\n", si_pa->channel_num, val == 1 ? "on" : "off");
+	speaker_mute_control = val;
+
+	if (speaker_mute_control == 1) {
+		if (si_pa &&
+			si_pa->mute == SIPA_DEVICE_MUTE_OFF &&
+			si_pa->scene == AUDIO_SCENE_RECEIVER &&
+			si_pa->channel_num == 0) {
+			pr_info("%s: is handset mode\n", __func__);
+			return 0;
+		}
+	}
+
+	if (si_pa) {
+		if (speaker_mute_control) {
+			si_pa->sipa_on = false;
+			if (sia91xx_soft_mute(si_pa)) {
+				gpio_set_value(si_pa->rst_pin, 1);
+			}
+		} else if (si_pa->sipa_on == true) {
+			sipa_reg_init(si_pa);
+			sia91xx_dsp_start(si_pa, SNDRV_PCM_STREAM_PLAYBACK);
+			sipa_regmap_check_trimming(si_pa);
+		}
+	}
+
+	return 0;
+}
+
+static const struct snd_kcontrol_new sipa_snd_control_spk_mute[] = {
+	SOC_ENUM_EXT("Speaker_Mute_Switch", spk_mute_ctrl_enum,
+					sipa_spk_mute_ctrl_get, sipa_spk_mute_ctrl_put),
+};
+#endif /* OPLUS_FEATURE_SPEAKER_MUTE */
+
 static const char *const power_function[] = { "Off", "On" };
 static const char *const reboot_function[] = { "Off", "On" };
 static const char *const audio_scene[] = { "Playback", "Voice", "MMI_Receiver", "Receiver", "MMI_SpeakerR", "MMI_SpeakerL" };
@@ -2303,6 +2365,11 @@ static int sipa_component_probe(
 		sia91xx_component_probe(component);
 		//customer add controls
 		sia91xx_create_controls(component);
+#ifdef OPLUS_FEATURE_SPEAKER_MUTE
+// Add for spk mute ctrl
+		snd_soc_add_component_controls(component, sipa_snd_control_spk_mute,
+									ARRAY_SIZE(sipa_snd_control_spk_mute));
+#endif
 	}
 	return 0;
 }

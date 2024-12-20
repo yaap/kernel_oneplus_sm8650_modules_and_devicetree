@@ -45,6 +45,7 @@ enum oplus_pa_work_mode {
 	WORK_MODE_FM,
 	WORK_MODE_RECEIVER,
 	WORK_MODE_LEFT,
+	WORK_MODE_RIGHT,
 	WORK_MODE_COUNT,
 };
 

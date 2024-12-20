@@ -19,9 +19,14 @@
 #include "sde_color_processing.h"
 #include "sde_encoder_phys.h"
 #include "sde_trace.h"
+
 #ifdef OPLUS_FEATURE_DISPLAY_ADFR
 #include "oplus_adfr.h"
 #endif /* OPLUS_FEATURE_DISPLAY_ADFR */
+
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+#include "oplus_onscreenfingerprint.h"
+#endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 
 bool refresh_rate_change = false;
 extern bool oplus_pwm_onepluse_switch;
@@ -146,9 +151,9 @@ int oplus_panel_cmd_switch(struct dsi_panel *panel, enum dsi_cmd_set_type *type)
 		}
 	}
 
-	if (panel->pwm_params.pwm_switch_support_dc) {
+	if (panel->pwm_params.pwm_switch_support_dc
+		&& !panel->pwm_params.pwm_switch_support_extend_mode) {
 		if(oplus_panel_pwm_onepulse_is_enabled(panel)) {
-			LCD_ERR("display is valid\n");
 			switch (*type) {
 			case DSI_CMD_SET_TIMING_SWITCH:
 				*type = DSI_CMD_TIMMING_PWM_SWITCH_ONEPULSE;
@@ -159,6 +164,31 @@ int oplus_panel_cmd_switch(struct dsi_panel *panel, enum dsi_cmd_set_type *type)
 			default:
 				break;
 			}
+		}
+	} else if (panel->pwm_params.pwm_switch_support_extend_mode) {
+		if (panel->pwm_params.oplus_dynamic_pulse == ONE_ONE_PULSE
+			|| (panel->pwm_params.oplus_dynamic_pulse == ONE_EIGHTEEN_PULSE
+			&& panel->bl_config.bl_level > 1162)) {
+			switch (*type) {
+			case DSI_CMD_SET_TIMING_SWITCH:
+				*type = DSI_CMD_TIMMING_PWM_SWITCH_ONEPULSE;
+				break;
+			case DSI_CMD_SET_NOLP:
+				panel->pwm_params.oplus_aod_mutual_fps_flag = true;
+				panel->pwm_params.aod_off_timestamp = ktime_get();
+				LCD_DEBUG("aod_off_timestamp:%lu\n", ktime_to_ms(panel->pwm_params.aod_off_timestamp));
+				*type = DSI_CMD_SET_NOLP_ONEPULSE;
+				break;
+			case DSI_CMD_SET_OFF:
+				panel->pwm_params.oplus_aod_mutual_fps_flag = false;
+				break;
+			default:
+				break;
+			}
+		}
+		panel->pwm_params.oplus_pulse_mutual_fps_flag--;
+		if (panel->pwm_params.oplus_pulse_mutual_fps_flag < PULSE_MUTUAL_FPS_LOWER_LIMIT) {
+			panel->pwm_params.oplus_pulse_mutual_fps_flag = 0;
 		}
 	} else {
 		/* switch the command when pwm onepulse is enabled */
@@ -204,6 +234,27 @@ int oplus_panel_cmd_switch(struct dsi_panel *panel, enum dsi_cmd_set_type *type)
 	if (*type == DSI_CMD_SET_ON && oplus_panel_id_compatibility(panel)) {
 		*type = DSI_CMD_SET_COMPATIBILITY_ON;
 	}
+
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+	if (oplus_ofp_is_supported()) {
+		if (oplus_ofp_need_to_do_aod_off_compensation()) {
+			switch (*type) {
+			case DSI_CMD_SET_NOLP:
+				if (panel->cur_mode->priv_info->cmd_sets[DSI_CMD_AOD_OFF_COMPENSATION].count) {
+					*type = DSI_CMD_AOD_OFF_COMPENSATION;
+				}
+				break;
+			case DSI_CMD_SET_NOLP_ONEPULSE:
+				if (panel->cur_mode->priv_info->cmd_sets[DSI_CMD_AOD_OFF_COMPENSATION_ONEPULSE].count) {
+					*type = DSI_CMD_AOD_OFF_COMPENSATION_ONEPULSE;
+				}
+				break;
+			default:
+				break;
+			}
+		}
+	}
+#endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 
 	count = panel->cur_mode->priv_info->cmd_sets[*type].count;
 	if (count == 0) {

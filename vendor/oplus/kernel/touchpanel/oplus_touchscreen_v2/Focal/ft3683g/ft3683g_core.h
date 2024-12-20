@@ -106,8 +106,8 @@
 
 #define FTS_MAX_TOUCH_BUF                       4096
 
-#define FTS_DIFF_BUF_LENGTH                     702 /* tx*rx */
-#define FTS_SC_BUF_LENGTH                       57 /* tx+rx */
+#define FTS_DIFF_BUF_LENGTH                     720 /* tx*rx */
+#define FTS_SC_BUF_LENGTH                       58 /* tx+rx */
 
 #define FTS_GESTURE_DATA_LEN                    28
 
@@ -215,7 +215,8 @@
 #define FTS_240HZ_GAME_MODE                     0x01
 #define FTS_360HZ_GAME_MODE                     0x02
 #define FTS_720HZ_GAME_MODE                     0x03
-
+#define INTELLIGENT_GAME_MODE                   11
+#define EXTREME_GAME_MODE                       12
 enum _FTS_RST_REASON {
 	FTS_RST_REASON_UNKNOWN  = 0,
 	FTS_RST_REASON_FWUPDATE = 0x01,
@@ -356,6 +357,7 @@ struct chip_data_ft3683g {
 	int tp_temperature;
 	int freq_point;
 	int glove_mode_flag;
+	int glove_mode_enable_count;
 	bool black_gesture_indep;
 	u8 fre_num;
 	u8 snr_count;
@@ -397,6 +399,8 @@ struct chip_data_ft3683g {
 	bool charger_connected;
 	fod_trigger_type fod_trigger;
 	bool water_mode;
+	int extreme_game_report_rate;
+	bool extreme_game_flag;
 };
 
 

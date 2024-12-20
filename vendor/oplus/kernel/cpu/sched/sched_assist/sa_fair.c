@@ -230,8 +230,7 @@ bool set_ux_task_to_prefer_cpu(struct task_struct *task, int *orig_target_cpu)
 	int start_cls = -1;
 	int cpu = 0;
 	int direction = -1;
-	int strict_cpu = -1, subopt_cpu = -1;
-	bool walk_next_cls = false;
+	int subopt_cpu = -1;
 	bool invalid_target = false;
 	int orig_cls_id = 0;
 	cpumask_t search_cpus = CPU_MASK_NONE;
@@ -294,21 +293,12 @@ retry:
 		if ((cls_nr == 0) && (!task_fits_capacity(task, cpu_capacity)))
 			break;
 
-		if (strict_ux_task(task)) {
-			/*
-			 * If the thread running on the CPU being traversed is neither UX nor RT,
-			 * then it is the best one, otherwise it is an alternative CPU.
-			 */
-			if (oplus_rbtree_empty(&orq->ux_list)
-				&& !rt_rq_is_runnable(&rq->rt)) {
-				strict_cpu = cpu;
-				walk_next_cls = false;
-			} else {
-				subopt_cpu = cpu;
-				walk_next_cls = (direction == 1)
-					&& (cls_nr != ux_cputopo.cls_nr - 1);
-			}
-		}
+		/*
+		 * strict_ux case: The system runs on a heavy load picking no cpu,
+		 *  and prevent EAS picking a small core
+		 */
+		if (strict_ux_task(task) && (subopt_cpu == -1))
+			subopt_cpu = cpu;
 
 		/* If an ux thread running on this CPU, drop it! */
 		if (oplus_get_ux_state(rq->curr) & SCHED_ASSIST_UX_MASK)
@@ -317,8 +307,10 @@ retry:
 		if (orq_has_ux_tasks(orq))
 			continue;
 
-		if (rq->curr->prio < MAX_RT_PRIO)
+		if (rq->curr->prio < MAX_RT_PRIO) {
+			subopt_cpu = cpu;
 			continue;
+		}
 
 		/* If there are rt threads in runnable state on this CPU, drop it! */
 		if (rt_rq_is_runnable(&rq->rt))
@@ -334,16 +326,11 @@ retry:
 		}
 	}
 
-	if (strict_cpu != -1) {
-		trace_set_ux_task_to_prefer_cpu(task, "strict",
-						*orig_target_cpu, strict_cpu,
-						start_cls, cls_nr,
-						&search_cpus);
-		*orig_target_cpu = strict_cpu;
-		return true;
-	}
+	cls_nr = cls_nr + direction;
+	if (cls_nr > 0 && cls_nr < ux_cputopo.cls_nr)
+		goto retry;
 
-	if (!walk_next_cls && subopt_cpu != -1) {
+	if (subopt_cpu != -1) {
 		trace_set_ux_task_to_prefer_cpu(task, "subopt",
 						*orig_target_cpu, subopt_cpu,
 						start_cls, cls_nr,
@@ -351,10 +338,6 @@ retry:
 		*orig_target_cpu = subopt_cpu;
 		return true;
 	}
-
-	cls_nr = cls_nr + direction;
-	if (cls_nr > 0 && cls_nr < ux_cputopo.cls_nr)
-		goto retry;
 
 	return false;
 }

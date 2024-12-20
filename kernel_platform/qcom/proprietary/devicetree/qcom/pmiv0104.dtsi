@@ -336,6 +336,7 @@
 	socd {
 		polling-delay-passive = <100>;
 		polling-delay = <0>;
+		status = "disabled";
 		thermal-sensors = <&bcl_soc>;
 
 		trips {

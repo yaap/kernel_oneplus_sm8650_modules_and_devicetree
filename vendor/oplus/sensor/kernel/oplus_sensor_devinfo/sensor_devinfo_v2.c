@@ -49,8 +49,6 @@
 #define RETRY_COUNT_FOR_GET_DEVICE 50
 #define WAITING_FOR_GET_DEVICE     100
 
-#define TBD 0
-
 #ifdef CONFIG_OPLUS_SENSOR_MTK68XX
 extern int mtk_nanohub_set_cmd_to_hub(uint8_t sensor_id, enum CUST_ACTION action, void *data);
 extern int mtk_nanohub_req_send(union SCP_SENSOR_HUB_DATA *data);
@@ -72,12 +70,51 @@ __attribute__((weak)) int unregister_lcdinfo_notifier() {
 	return -1;
 }*/
 
-enum {
+enum panel_id {
 	SAMSUNG = 1,
 	BOE,
 	TIANMA,
 	NT36672C,
-	HX83112F
+	HX83112F,
+	P_3,
+	P_B,
+	PANEL_NUM
+};
+
+struct panel_node {
+        enum panel_id id;
+        char *lcm_name;
+};
+
+static struct panel_node g_panel_node[PANEL_NUM] = {
+	{
+		.id = SAMSUNG,
+		.lcm_name = "samsung",
+	},
+	{
+		.id = BOE,
+		.lcm_name = "boe",
+	},
+	{
+		.id = TIANMA,
+		.lcm_name = "tianma",
+	},
+	{
+		.id = NT36672C,
+		.lcm_name = "nt36672c",
+	},
+	{
+		.id = HX83112F,
+		.lcm_name = "hx83112f",
+	},
+	{
+		.id = P_3,
+		.lcm_name = "p_3",
+	},
+	{
+		.id = P_B,
+		.lcm_name = "p_B",
+	}
 };
 
 #define DEV_TAG                     "[sensor_devinfo] "
@@ -106,6 +143,7 @@ enum {
 #endif
 
 #define SOURCE_NUM 6
+#define MAX_SIZE 64
 
 enum {
 	IS_SUPPROT_HWCALI = 1,
@@ -222,7 +260,7 @@ static char gold_cct_factor[35] = {0};
 static int cct_type = CCT_NORMAL;
 static int gold_cct_channels = 4;
 static int g_cct_gain_cali = 0;
-/* static int support_panel = 0; */
+static int support_panel = 0;
 
 static bool g_report_brightness = false;
 static bool g_support_bri_to_hal = false;
@@ -498,7 +536,7 @@ struct block_device *get_opluscustom_partition_bdev(void)
 			return NULL;
 		}
 		if(dev != 0) {
-			bdev = blkdev_get_by_dev(dev, BLK_OPEN_READ | BLK_OPEN_WRITE | BLK_OPEN_EXCL, THIS_MODULE, NULL);
+			bdev = blkdev_get_by_dev(dev, BLK_OPEN_READ, NULL, NULL);
 			if (!IS_ERR(bdev)) {
 				printk("success to get dev block\n");
 				return bdev;
@@ -522,6 +560,7 @@ static int read_oplus_custom(void *data)
 	struct iov_iter iter;
 	struct kvec iov;
         int read_size = 0;
+	int ret = 0;
 
 	bdev = get_opluscustom_partition_bdev();
 	if (!bdev) {
@@ -545,12 +584,14 @@ static int read_oplus_custom(void *data)
 		data_v1 = (sensor_cali_file_v1_t *)data;
 		if (!data_v1) {
 			DEVINFO_LOG("data_v1 NULL\n");
-			return -1;
+			ret = -1;
+			goto do_bdev_put;
 		}
 
 		if (read_size <= 0) {
 			DEVINFO_LOG("failed to read file %s\n", OPLUSCUSTOM_FILE);
-			return -1;
+			ret = -1;
+			goto do_bdev_put;
 		}
 
 		memcpy(data_v1, config_info.Sensor, 256);
@@ -558,19 +599,30 @@ static int read_oplus_custom(void *data)
 		data_v2 = (sensor_cali_file_v2_t *)data;
 		if (!data_v2) {
 			DEVINFO_LOG("data_v2 NULL\n");
-			return -1;
+			ret = -1;
+			goto do_bdev_put;
 		}
 
 		if (read_size <= 0) {
 			DEVINFO_LOG("failed to read file %s\n", OPLUSCUSTOM_FILE);
-			return -1;
+			ret = -1;
+			goto do_bdev_put;
 		}
 
 		memcpy(data_v2, config_info.Sensor, 256);
 	}
+
 	DEVINFO_LOG("read success = %d\n", read_size);
 
-	return 0;
+do_bdev_put:
+	if(bdev) {
+		DEVINFO_LOG("%s: bdev put \n", __func__);
+		blkdev_put(bdev, NULL);
+		bdev = NULL;
+	}
+
+
+	return ret;
 }
 
 static int sensor_read_oplus_custom(struct cali_data *data)
@@ -1055,11 +1107,17 @@ static int als_cali_open(struct inode *inode, struct file *file)
 	return single_open(file, als_cali_read_func, PDE_DATA(inode));
 }
 
+static loff_t als_cali_llseek(struct file *file, loff_t offset, int whence)
+{
+	return file->f_pos;
+}
+
 static const struct proc_ops als_cali_para_fops = {
 	.proc_open  = als_cali_open,
 	.proc_write = als_cali_write,
 	.proc_read  = seq_read,
 	.proc_release = single_release,
+	.proc_lseek = als_cali_llseek,
 };
 
 static void get_accgyro_cali_version(void)
@@ -1160,10 +1218,10 @@ static void oplus_als_cali_data_init(void)
 	return;
 }
 
-#if TBD
 static void get_gold_rear_cct(void)
 {
-	const struct fdt_property *gold_prop = NULL;
+	int ret = 0;
+	uint32_t gold_rear_cct_val[10] = {0};
 	uint32_t gold_rear_cct_r = 0;
 	uint32_t gold_rear_cct_g = 0;
 	uint32_t gold_rear_cct_b = 0;
@@ -1172,16 +1230,16 @@ static void get_gold_rear_cct(void)
 	uint32_t gold_rear_cct_f = 0;
 
         /* get 3000k gold ch */
-	gold_prop = oplus_get_dts_feature(rear_cct, "/odm/rear_cct", "gold_rear_cct_3k");
-	if (gold_prop == NULL) {
+	ret = oplus_get_dts_feature(rear_cct, "/odm/rear_cct", "gold_rear_cct_3k", gold_rear_cct_val);
+	if (ret < 0) {
 		return;
 	} else {
-		gold_rear_cct_r = fdt32_to_cpu(*((uint32_t *)gold_prop->data));
-		gold_rear_cct_g = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 1));
-		gold_rear_cct_b = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 2));
-		gold_rear_cct_c = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 3));
-		gold_rear_cct_w = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 4));
-		gold_rear_cct_f = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 5));
+		gold_rear_cct_r = gold_rear_cct_val[0];
+		gold_rear_cct_g = gold_rear_cct_val[1];
+		gold_rear_cct_b = gold_rear_cct_val[2];
+		gold_rear_cct_c = gold_rear_cct_val[3];
+		gold_rear_cct_w = gold_rear_cct_val[4];
+		gold_rear_cct_f = gold_rear_cct_val[5];
 		DEVINFO_LOG("gold_rear_cct_3k [%u, %u, %u, %u, %u, %u]",
 				gold_rear_cct_r, gold_rear_cct_g, gold_rear_cct_b,
 				gold_rear_cct_c, gold_rear_cct_w, gold_rear_cct_f);
@@ -1191,16 +1249,16 @@ static void get_gold_rear_cct(void)
 				gold_rear_cct_c, gold_rear_cct_w, gold_rear_cct_f);
 	}
         /* get 6000k gold ch */
-	gold_prop = oplus_get_dts_feature(rear_cct, "/odm/rear_cct", "gold_rear_cct_6k");
-	if (gold_prop == NULL) {
+	ret = oplus_get_dts_feature(rear_cct, "/odm/rear_cct", "gold_rear_cct_6k", gold_rear_cct_val);
+	if (ret < 0) {
 		return;
 	} else {
-		gold_rear_cct_r = fdt32_to_cpu(*((uint32_t *)gold_prop->data));
-		gold_rear_cct_g = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 1));
-		gold_rear_cct_b = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 2));
-		gold_rear_cct_c = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 3));
-		gold_rear_cct_w = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 4));
-		gold_rear_cct_f = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 5));
+		gold_rear_cct_r = gold_rear_cct_val[0];
+		gold_rear_cct_g = gold_rear_cct_val[1];
+		gold_rear_cct_b = gold_rear_cct_val[2];
+		gold_rear_cct_c = gold_rear_cct_val[3];
+		gold_rear_cct_w = gold_rear_cct_val[4];
+		gold_rear_cct_f = gold_rear_cct_val[5];
 		DEVINFO_LOG("gold_rear_cct_6k [%u, %u, %u, %u, %u, %u]",
 				gold_rear_cct_r, gold_rear_cct_g, gold_rear_cct_b,
 				gold_rear_cct_c, gold_rear_cct_w, gold_rear_cct_f);
@@ -1210,17 +1268,17 @@ static void get_gold_rear_cct(void)
 				gold_rear_cct_c, gold_rear_cct_w, gold_rear_cct_f);
 	}
 
-	gold_prop = oplus_get_dts_feature(rear_cct, "/odm/rear_cct", "gold_rear_cct_factor");
-	if (gold_prop == NULL) {
+	ret = oplus_get_dts_feature(rear_cct, "/odm/rear_cct", "gold_rear_cct_factor", gold_rear_cct_val);
+	if (ret < 0) {
 		sprintf(gold_rear_cct_factor, "1001 1001 1001 1001 1001 1001");
 		return;
 	} else {
-		gold_rear_cct_r = fdt32_to_cpu(*((uint32_t *)gold_prop->data));
-		gold_rear_cct_g = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 1));
-		gold_rear_cct_b = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 2));
-		gold_rear_cct_c = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 3));
-		gold_rear_cct_w = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 4));
-		gold_rear_cct_f = fdt32_to_cpu(*((uint32_t *)gold_prop->data + 5));
+		gold_rear_cct_r = gold_rear_cct_val[0];
+		gold_rear_cct_g = gold_rear_cct_val[1];
+		gold_rear_cct_b = gold_rear_cct_val[2];
+		gold_rear_cct_c = gold_rear_cct_val[3];
+		gold_rear_cct_w = gold_rear_cct_val[4];
+		gold_rear_cct_f = gold_rear_cct_val[5];
 		DEVINFO_LOG("gold_rear_cct_factor [%u, %u, %u, %u, %u, %u]",
 			gold_rear_cct_r, gold_rear_cct_g, gold_rear_cct_b,
 			gold_rear_cct_c, gold_rear_cct_w, gold_rear_cct_f);
@@ -1230,56 +1288,38 @@ static void get_gold_rear_cct(void)
 			gold_rear_cct_c, gold_rear_cct_w, gold_rear_cct_f);
 	}
 }
-#endif
 
-#if TBD
 static ssize_t mag_data_int2str(char *buf)
 {
 	ssize_t pos = 0;
-	int len = 0;
-	int ii = 0;
 	int jj = 0;
-	int symble = 1;
+	int symbol = 1;
 	int value = 0;
 	int offset = 0;
-	void *fdt = initial_boot_params;
-	uint32_t *data_addr = NULL;
-	int nodeoffset = 0;
-	char node[64] = {0};
-	const struct fdt_property *prop = NULL;
+	uint32_t mag_soft_para[18];
+	int ret = 0;
 	DEVINFO_LOG("%s call\n", __func__);
 
-	for (ii = 0; ii < SOURCE_NUM; ii++) {
-		sprintf(node, "/odm/msensor_%d", ii + 1);
-		nodeoffset = fdt_path_offset(fdt, node);
-		if (nodeoffset < 0) {
-			DEVINFO_LOG("get %s nodeoffset fail ii:%d", node, ii);
-			continue;
-		}
-		prop = fdt_get_property(fdt, nodeoffset, "soft-mag-parameter", &len);
-		if (prop) {
-			data_addr =  (uint32_t *) prop->data;
-			if (MAG_PARA_NUM == len / MAG_PARA_OFFSET) {
-				for (jj = 0; jj < MAG_PARA_NUM; jj++) {
-					value = fdt32_to_cpu(*(data_addr + (2 * jj)));
-					symble = fdt32_to_cpu(*(data_addr + (2 * jj + 1))) > 0 ? -1 : 1;
-					offset = sprintf(buf + pos, "%d", symble * value);
-					if (offset <= 0) {
-						DEVINFO_LOG("sprintf fail:%d %d\n", ii, jj);
-						return 0;
-					}
-					pos += MAG_PARA_OFFSET;
-				}
-			}
-		} else {
-			DEVINFO_LOG("prop = null ii:%d\n", ii);
-			continue;
-		}
+	ret = oplus_get_dts_feature(mag, "/odm/msensor", "soft-mag-parameter", mag_soft_para);
+	if (ret < 0) {
+		DEVINFO_LOG("get msensor node failed");
+		return 0;
 	}
+
+	for (jj = 0; jj < MAG_PARA_NUM; jj++) {
+		value = mag_soft_para[2 * jj];
+		symbol = mag_soft_para[(2 * jj) + 1] > 0 ? -1 : 1;
+		offset = sprintf(buf + pos, "%d", symbol * value);
+		if (offset <= 0) {
+			DEVINFO_LOG("sprintf fail: %d\n", jj);
+			return 0;
+		}
+		pos += MAG_PARA_OFFSET;
+	}
+
 	DEVINFO_LOG("mag_data_int2str success, pos = %zu.\n", pos);
 	return pos;
 }
-#endif
 
 static ssize_t mag_para_read_proc(struct file *file, char __user *buf, size_t count, loff_t *off)
 {
@@ -1287,9 +1327,7 @@ static ssize_t mag_para_read_proc(struct file *file, char __user *buf, size_t co
 	int len = 0;
 
 	pr_info("%s call\n", __func__);
-#if TBD
 	len = mag_data_int2str(page);
-#endif
 
 	if (len > *off) {
 		len -= *off;
@@ -1338,10 +1376,105 @@ exit:
 	return rc;
 }
 
-#if TBD
+static struct panel_node * find_panel(enum panel_id id)
+{
+	int index = 0;
+	for (index = 0; index < PANEL_NUM; ++index) {
+		if (g_panel_node[index].id == id) {
+			return &g_panel_node[index];
+		}
+	}
+	return NULL;
+}
+
+static void choose_special_gold_cct_value(int support_panel)
+{
+	int ret = 0;
+	int len = 0;
+	uint32_t gold_cct_val[10] = {0};
+	uint32_t gold_cct_r = 0;
+	uint32_t gold_cct_g = 0;
+	uint32_t gold_cct_b = 0;
+	uint32_t gold_cct_c = 0;
+	uint32_t gold_cct_w = 0;
+	uint32_t gold_cct_f = 0;
+	char als_panel[MAX_SIZE] = {0};
+	struct panel_node *p_node = NULL;
+	struct device_node *node = NULL;
+
+	p_node = find_panel(support_panel);
+	if (p_node == NULL) {
+		DEVINFO_LOG("find panel fail\n");
+		return;
+	}
+
+	snprintf(als_panel, MAX_SIZE, "/odm/als_panel_%s_1", p_node->lcm_name);
+	DEVINFO_LOG("%s\n", als_panel);
+	node = of_find_node_by_path(als_panel);
+	if (node == NULL) {
+		DEVINFO_LOG("get %s fail", als_panel);
+		return;
+	}
+
+	/*get 3000k gold ch*/
+	len = of_property_count_elems_of_size(node, "gold_cct_3k", sizeof(uint32_t));
+	if (len < 0) {
+		DEVINFO_LOG("get feature gold_cct_3k fail\n");
+		return;
+	}
+
+	ret = of_property_read_variable_u32_array(node, "gold_cct_3k", gold_cct_val, len, 0);
+	if (ret < 0) {
+		DEVINFO_LOG("gold_cct_3k fail\n");
+		return;
+	} else {
+		gold_cct_r = gold_cct_val[0];
+		gold_cct_g = gold_cct_val[1];
+		gold_cct_b = gold_cct_val[2];
+		gold_cct_c = gold_cct_val[3];
+		gold_cct_w = gold_cct_val[4];
+		gold_cct_f = gold_cct_val[5];
+		DEVINFO_LOG("gold_cct_3k [%u, %u, %u, %u, %u, %u]",
+			gold_cct_r, gold_cct_g, gold_cct_b,
+			gold_cct_c, gold_cct_w, gold_cct_f);
+
+		sprintf(gold_cct_3k, "%u %u %u %u %u %u",
+			gold_cct_r, gold_cct_g, gold_cct_b,
+			gold_cct_c, gold_cct_w, gold_cct_f);
+	}
+
+	/*get 6000k gold ch*/
+	len = of_property_count_elems_of_size(node, "gold_cct_6k", sizeof(uint32_t));
+	if (len < 0) {
+		DEVINFO_LOG("get feature gold_cct_3k fail\n");
+		return;
+	}
+
+	ret = of_property_read_variable_u32_array(node, "gold_cct_6k", gold_cct_val, len, 0);
+	if (ret < 0) {
+		DEVINFO_LOG("gold_cct_6k fail\n");
+		return;
+	} else {
+		gold_cct_r = gold_cct_val[0];
+		gold_cct_g = gold_cct_val[1];
+		gold_cct_b = gold_cct_val[2];
+		gold_cct_c = gold_cct_val[3];
+		gold_cct_w = gold_cct_val[4];
+		gold_cct_f = gold_cct_val[5];
+		DEVINFO_LOG("gold_cct_6k [%u, %u, %u, %u, %u, %u]",
+			gold_cct_r, gold_cct_g, gold_cct_b,
+			gold_cct_c, gold_cct_w, gold_cct_f);
+
+		sprintf(gold_cct_6k, "%u %u %u %u %u %u",
+			gold_cct_r, gold_cct_g, gold_cct_b,
+			gold_cct_c, gold_cct_w, gold_cct_f);
+	}
+}
+
 static void get_front_cct_feature(void)
 {
-	const struct fdt_property *front_cct_feature = NULL;
+	uint32_t gold_front_cct_val[10] = {0};
+	int ret = 0;
 	uint32_t gold_cct_r = 0;
 	uint32_t gold_cct_g = 0;
 	uint32_t gold_cct_b = 0;
@@ -1349,36 +1482,34 @@ static void get_front_cct_feature(void)
 	uint32_t gold_cct_w = 0;
 	uint32_t gold_cct_f = 0;
 
-	front_cct_feature = oplus_get_dts_feature(front_cct, "/odm/light", "cct_type");
-	if (front_cct_feature == NULL) {
-		cct_type = CCT_WISE;
-	} else {
-		cct_type = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data));
+	ret = oplus_get_dts_feature(front_cct, "/odm/light", "cct_type", &cct_type);
+	if (ret < 0) {
 		cct_type = CCT_WISE;
 	}
 	DEVINFO_LOG("cct_type = %d", cct_type);
 
-	front_cct_feature = oplus_get_dts_feature(front_cct, "/odm/light", "support_panel");
-	if (front_cct_feature == NULL) {
+	ret = oplus_get_dts_feature(front_cct, "/odm/light", "support_panel", &support_panel);
+	if (ret < 0) {
 		support_panel = 0; /* not support 2 panel */
-	} else {
-		support_panel = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data));
 	}
 	DEVINFO_LOG("support_panel = %d", support_panel);
 
-	if (support_panel == 0) {
+	if (support_panel > 0) {
+		DEVINFO_LOG("choose special gold cct");
+		choose_special_gold_cct_value(support_panel);
+	} else {
 		/*get 3000k gold ch*/
-		front_cct_feature = oplus_get_dts_feature(front_cct, "/odm/light", "gold_cct_3k");
-		if (front_cct_feature == NULL) {
+		ret = oplus_get_dts_feature(front_cct, "/odm/light", "gold_cct_3k", gold_front_cct_val);
+		if (ret < 0) {
 			DEVINFO_LOG("gold_cct_3k fail\n");
 			return;
 		} else {
-			gold_cct_r = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data));
-			gold_cct_g = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 1));
-			gold_cct_b = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 2));
-			gold_cct_c = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 3));
-			gold_cct_w = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 4));
-			gold_cct_f = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 5));
+			gold_cct_r = gold_front_cct_val[0];
+			gold_cct_g = gold_front_cct_val[1];
+			gold_cct_b = gold_front_cct_val[2];
+			gold_cct_c = gold_front_cct_val[3];
+			gold_cct_w = gold_front_cct_val[4];
+			gold_cct_f = gold_front_cct_val[5];
 			DEVINFO_LOG("gold_cct_3k [%u, %u, %u, %u, %u, %u]",
 					gold_cct_r, gold_cct_g, gold_cct_b,
 					gold_cct_c, gold_cct_w, gold_cct_f);
@@ -1389,17 +1520,17 @@ static void get_front_cct_feature(void)
 		}
 
 		/*get 6000k gold ch*/
-		front_cct_feature = oplus_get_dts_feature(front_cct, "/odm/light", "gold_cct_6k");
-		if (front_cct_feature == NULL) {
+		ret = oplus_get_dts_feature(front_cct, "/odm/light", "gold_cct_6k", gold_front_cct_val);
+		if (ret < 0) {
 			DEVINFO_LOG("gold_cct_6k fail\n");
 			return;
 		} else {
-			gold_cct_r = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data));
-			gold_cct_g = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 1));
-			gold_cct_b = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 2));
-			gold_cct_c = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 3));
-			gold_cct_w = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 4));
-			gold_cct_f = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 5));
+			gold_cct_r = gold_front_cct_val[0];
+			gold_cct_g = gold_front_cct_val[1];
+			gold_cct_b = gold_front_cct_val[2];
+			gold_cct_c = gold_front_cct_val[3];
+			gold_cct_w = gold_front_cct_val[4];
+			gold_cct_f = gold_front_cct_val[5];
 			DEVINFO_LOG("gold_cct_6k [%u, %u, %u, %u, %u, %u]",
 					gold_cct_r, gold_cct_g, gold_cct_b,
 					gold_cct_c, gold_cct_w, gold_cct_f);
@@ -1411,18 +1542,18 @@ static void get_front_cct_feature(void)
 	}
 
 	/* get gold_cct_factor */
-	front_cct_feature = oplus_get_dts_feature(front_cct, "/odm/light", "gold_cct_factor");
-	if (front_cct_feature == NULL) {
+	ret = oplus_get_dts_feature(front_cct, "/odm/light", "gold_cct_factor", gold_front_cct_val);
+	if (ret < 0) {
 		DEVINFO_LOG("gold_cct_factor fail, use default\n");
 		sprintf(gold_cct_factor, "%d %d %d %d %d %d", 1001, 1001, 1001, 1001, 1001, 1001);
 		return;
 	} else {
-		gold_cct_r = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data));
-		gold_cct_g = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 1));
-		gold_cct_b = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 2));
-		gold_cct_c = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 3));
-		gold_cct_w = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 4));
-		gold_cct_f = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data + 5));
+		gold_cct_r = gold_front_cct_val[0];
+		gold_cct_g = gold_front_cct_val[1];
+		gold_cct_b = gold_front_cct_val[2];
+		gold_cct_c = gold_front_cct_val[3];
+		gold_cct_w = gold_front_cct_val[4];
+		gold_cct_f = gold_front_cct_val[5];
 		DEVINFO_LOG("gold_cct_factor [%u, %u, %u, %u, %u, %u]",
 				gold_cct_r, gold_cct_g, gold_cct_b,
 				gold_cct_c, gold_cct_w, gold_cct_f);
@@ -1432,15 +1563,13 @@ static void get_front_cct_feature(void)
 				gold_cct_c, gold_cct_w, gold_cct_f);
 	}
 
-	front_cct_feature = oplus_get_dts_feature(front_cct, "/odm/light", "need_gain_cali");
-	if (front_cct_feature == NULL) {
+	ret = oplus_get_dts_feature(front_cct, "/odm/light", "need_gain_cali", &g_cct_gain_cali);
+	if (ret < 0) {
 		DEVINFO_LOG("g_cct_gain_cali fail, use default\n");
-	} else {
-		g_cct_gain_cali = fdt32_to_cpu(*((uint32_t *)front_cct_feature->data));
+		g_cct_gain_cali = 0;
 	}
 	DEVINFO_LOG("g_cct_gain_cali = %d", g_cct_gain_cali);
 }
-#endif
 
 static void sensor_devinfo_work(struct work_struct *dwork)
 {
@@ -1562,10 +1691,10 @@ static void sensor_devinfo_work(struct work_struct *dwork)
 
 	oplus_als_cali_data_init();
 	get_accgyro_cali_version();
-	/* get_gold_rear_cct(); */
+	get_gold_rear_cct();
 	get_acc_gyro_cali_nv_adapt_q_flag();
 	oplus_mag_para_init();
-	/* get_front_cct_feature(); */
+	get_front_cct_feature();
 
 	DEVINFO_LOG("success \n");
 }
@@ -1604,79 +1733,64 @@ static const struct proc_ops parameter_proc_fops = {
 	.proc_write = NULL,
 };
 
-#if TBD
 int get_msensor_parameter(int num)
 {
-	int offset = 0;
-	int len = 0;
-	int para_len = 0;
+	int elements = 0;
 	int index = 0;
-	int flt_num = 0;
 	int para_num = 0;
-	uint32_t *data_addr = NULL;
+	int ret = 0;
 	uint32_t temp_data;
-	void *fdt = initial_boot_params;
-	char *libname = NULL;
-	char *match_project = NULL;
-	char temp_buf[128] = {0}, msensor[16], float_buf[10], mag_para[30];
+	uint32_t mag_data[30] = {0};
+	const char *libname = NULL;
+	const char *match_project = NULL;
+	char temp_buf[128] = {0}, msensor[16], float_buf[10];
 	char project[10] = "0000";
-	const struct fdt_property *prop = NULL;
+	struct device_node *node = NULL;
+	struct device_node *para_ch_node = NULL;
 
 	sprintf(msensor, "/odm/msensor_%d", num + 1);
-	offset = fdt_path_offset(fdt, msensor);
-	if (offset < 0) {
-		DEVINFO_LOG("[oem] get %s offset fail", msensor);
-		return -1;
+	node = of_find_node_by_name(NULL, msensor);
+	if (!node) {
+		DEVINFO_LOG("find /odm/msensor_%d fail\n", num + 1);
+		return -ENOMEM;
 	}
 
-	libname = (char *) fdt_getprop(fdt, offset, "libname", &len);
-	if (libname == NULL) {
+	ret = of_property_read_string(node, "libname", &libname);
+	if (libname == NULL || ret < 0) {
 		DEVINFO_LOG("get libname prop fail");
 		return -1;
 	}
 	DEVINFO_LOG(" %s libname is %s\n", msensor, libname);
 
-	prop = fdt_get_property(fdt, offset, "para_num", &len);
-	if (prop == NULL) {
+	ret = of_property_read_u32(node, "para_num", &para_num);
+	if (ret < 0) {
 		DEVINFO_LOG("para num is null, no need to match project");
-		prop = fdt_get_property(fdt, offset, "soft-mag-parameter", &len);
-		if (prop == NULL) {
+		ret = of_property_read_variable_u32_array(node, "soft-mag-parameter", mag_data, 1, 30);
+		if (ret < 0) {
 			DEVINFO_LOG("get soft-mag-parameter prop fail");
 			return -1;
 		}
-		para_len = fdt32_to_cpu(prop->len); /*bytes*/
-		data_addr = (uint32_t *)prop->data;
+		elements = ret;
 	} else {
-		data_addr = (uint32_t *)prop->data;
-		para_num = fdt32_to_cpu(*data_addr);
 		DEVINFO_LOG(" %s match project start, para_num = %d\n", msensor, para_num);
-
 		/*sprintf(project, "%u", get_project());
 		DEVINFO_LOG("project %s\n", project);*/
-
-		for (index = 0; index < para_num; index++) {
-			sprintf(mag_para, "/odm/msensor_%d/mag_para_%d", num + 1, index + 1);
-			offset = fdt_path_offset(fdt, mag_para);
-			if (offset < 0) {
-				DEVINFO_LOG("[oem] get %s offset fail", mag_para);
-				return -1;
-			}
-
-			match_project = (char *) fdt_getprop(fdt, offset, "match_projects", &len);
-			if (match_project == NULL) {
+		for_each_child_of_node(node, para_ch_node) {
+			DEVINFO_LOG("parse %s", para_ch_node->name);
+			ret = of_property_read_string(para_ch_node, "match_projects", &match_project);
+			if (ret < 0 || match_project == NULL) {
 				DEVINFO_LOG("get match_project prop fail");
 				return -1;
 			}
-			DEVINFO_LOG("soft_magpara_%d match project %s\n", index, match_project);
+			DEVINFO_LOG(" match project %s\n", match_project);
 
 			if (strstr(match_project, project) != NULL) {
-				prop = fdt_get_property(fdt, offset, "soft-mag-parameter", &len);
-				if (prop == NULL) {
+				ret = of_property_read_variable_u32_array(para_ch_node, "soft-mag-parameter", mag_data, 1, 30);
+				if (ret < 0) {
 					DEVINFO_LOG("get soft-mag-parameter prop fail");
 					return -1;
 				}
-				para_len = fdt32_to_cpu(prop->len); /*bytes*/
-				data_addr = (uint32_t *)prop->data;
+				elements = ret;
 
 				DEVINFO_LOG("match project success");
 				break;
@@ -1685,10 +1799,9 @@ int get_msensor_parameter(int num)
 	}
 
 	if (!strcmp(libname, "mmc") || !strcmp(libname, "mxg")) { /*Memsic parameter need analyze*/
-		flt_num = fdt32_to_cpu(*data_addr);
 		for (index = 0; index < 9; index++) {
-			temp_data = fdt32_to_cpu(*(data_addr + (2 * index)));
-			sprintf(float_buf, "%c%d.%d%d%d%d", fdt32_to_cpu(*(data_addr + 2 * index + 1)) ? '-' : ' ',
+			temp_data = mag_data[2 * index];
+			sprintf(float_buf, "%c%d.%d%d%d%d", mag_data[2 * index + 1] ? '-' : ' ',
 				temp_data / 10000, temp_data % 10000 / 1000, temp_data % 1000 / 100, temp_data % 100 / 10,
 				temp_data % 10);
 			sprintf(para_buf[num], "%s,%s", temp_buf, float_buf);
@@ -1697,17 +1810,16 @@ int get_msensor_parameter(int num)
 		temp_buf[0] = ' ';
 		sprintf(para_buf[num], "\"%s\":[%s]", libname, temp_buf);
 	} else if (!strcmp(libname, "akm")) {
-		for (index = 1; index < para_len / 4; index++) {
-			sprintf(para_buf[num], "%s,%d", temp_buf, fdt32_to_cpu(*(data_addr + index)));
+		for (index = 1; index < elements; index++) {
+			sprintf(para_buf[num], "%s,%d", temp_buf, mag_data[index]);
 			strcpy(temp_buf, para_buf[num]);
 		}
-		sprintf(para_buf[num], "\"%s\":[%u%s]", libname, fdt32_to_cpu(*data_addr), temp_buf);
+		sprintf(para_buf[num], "\"%s\":[%u%s]", libname, mag_data[0], temp_buf);
 	}
+
 	return 0;
 }
-#endif
 
-#if TBD
 void  mag_soft_parameter_init(void)
 {
 	int ret = -1;
@@ -1722,7 +1834,6 @@ void  mag_soft_parameter_init(void)
 		}
 	}
 }
-#endif
 
 static int sensor_feature_read_func(struct seq_file *s, void *v)
 {
@@ -2168,7 +2279,7 @@ static int __init sensor_devinfo_init(void)
 	int ret = 0;
 
 	ssc_interactive_parse_dts();
-	/* mag_soft_parameter_init(); */
+	mag_soft_parameter_init();
 	get_new_arch_info();
 	is_support_lb_algo();
 	get_mtk_cali_origin_info();

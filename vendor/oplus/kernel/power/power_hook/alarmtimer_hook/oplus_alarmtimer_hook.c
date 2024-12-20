@@ -21,6 +21,7 @@
 #include <linux/suspend.h>
 #include <linux/workqueue.h>
 #include <linux/rtc.h>
+#include <linux/sched.h>
 
 #include "../utils/oplus_power_hook_utils.h"
 #include "oplus_alarmtimer_hook.h"
@@ -60,7 +61,7 @@ struct timerfd_ctx {
 };
 
 struct alarm_info {
-	char comm[COMM_LEN];
+	char comm[TASK_COMM_LEN];
 	int pid;
 	long long exp;
 	void *func;
@@ -80,7 +81,7 @@ typedef struct non_timerfd_alarm_info {
 }ntf_alarm_info;
 
 struct trigger_stat {
-	char comm[COMM_LEN];
+	char comm[TASK_COMM_LEN];
 	int pid;
 	unsigned int cnt;
 };
@@ -127,8 +128,8 @@ void ntf_alarms_init(ntf_alarm_info *ntf_alarms)
 
 void ntf_alarms_add(struct alarm *alarm, struct alarm_info *alarm_elm)
 {
-	strncpy(alarm_elm->comm, current->comm, COMM_LEN - 1);
-	alarm_elm->comm[COMM_LEN - 1] = '\0';
+	strncpy(alarm_elm->comm, current->comm, TASK_COMM_LEN - 1);
+	alarm_elm->comm[TASK_COMM_LEN - 1] = '\0';
 
 	alarm_elm->pid  = current->pid;
 	alarm_elm->exp  = ktime_to_ms(alarm->node.expires);
@@ -137,7 +138,7 @@ void ntf_alarms_add(struct alarm *alarm, struct alarm_info *alarm_elm)
 
 void ntf_alarms_clear(struct alarm_info *alarm_elm)
 {
-	memset(alarm_elm->comm, 0, COMM_LEN);
+	memset(alarm_elm->comm, 0, TASK_COMM_LEN);
 	alarm_elm->pid  = -1;
 	alarm_elm->exp  = 0;
 	alarm_elm->func = NULL;
@@ -167,8 +168,8 @@ static void alarm_trigger_add(struct alarm_info *frd_alarm, struct trigger_info 
 
 		if((alarm_trig->stats[i].pid == 0) && (strlen(alarm_trig->stats[i].comm) == 0)) {
 			alarm_trig->stats[i].pid  = frd_alarm->pid;
-			strncpy(alarm_trig->stats[i].comm, frd_alarm->comm, COMM_LEN - 1);
-			alarm_trig->stats[i].comm[COMM_LEN - 1] = '\0';
+			strncpy(alarm_trig->stats[i].comm, frd_alarm->comm, TASK_COMM_LEN - 1);
+			alarm_trig->stats[i].comm[TASK_COMM_LEN - 1] = '\0';
 			alarm_trig->stats[i].cnt++;
 
 			alarm_trig->array_size++;
@@ -262,8 +263,8 @@ static void handler_timerfd_poll(struct file *file)
 				is_timerfd_alarmproc_function(fired_alarm_info.fired_alarm.func) &&
 				(fired_alarm_info.fired_alarm.exp == exp)) {
 
-			strncpy(fired_alarm_info.fired_alarm.comm, current->comm, COMM_LEN - 1);
-			fired_alarm_info.fired_alarm.comm[COMM_LEN - 1] = '\0';
+			strncpy(fired_alarm_info.fired_alarm.comm, current->comm, TASK_COMM_LEN - 1);
+			fired_alarm_info.fired_alarm.comm[TASK_COMM_LEN - 1] = '\0';
 			fired_alarm_info.fired_alarm.pid  = current->pid;
 
 			alarm_trigger_add(&fired_alarm_info.fired_alarm, &alarm_trigger);
@@ -344,8 +345,8 @@ static void ntf_alarm_work(struct work_struct *work)
 			non_timerfd_exp = non_timerfd_alarms.alarm_info[i].exp;
 			if(fired_alarm_info.fired_alarm.exp == non_timerfd_exp) {
 				strncpy(fired_alarm_info.fired_alarm.comm, \
-					non_timerfd_alarms.alarm_info[i].comm, COMM_LEN - 1);
-				fired_alarm_info.fired_alarm.comm[COMM_LEN - 1] = '\0';
+					non_timerfd_alarms.alarm_info[i].comm, TASK_COMM_LEN - 1);
+				fired_alarm_info.fired_alarm.comm[TASK_COMM_LEN - 1] = '\0';
 				fired_alarm_info.fired_alarm.pid = non_timerfd_alarms.alarm_info[i].pid;
 
 				find_kernel_alarm_source = true;

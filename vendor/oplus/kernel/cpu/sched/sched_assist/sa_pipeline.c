@@ -495,16 +495,17 @@ void mtk_rearrange_pipeline_preferred_cpus(struct task_struct *p, const struct c
 	u64 now_ns;
 	unsigned long flags;
 
+	if (unlikely(global_debug_enabled & DEBUG_PIPELINE)) {
+		printk("gameopt, %s: c_comm=%s, c_pid=%d, c_tgid=%d, comm=%s, pid=%d, tgid=%d, in_mask=%*pbl\n",
+			__func__, current->comm, current->pid, current->tgid, p->comm, p->pid, p->tgid,
+			cpumask_pr_args(in_mask));
+	}
+
 	if ((pipeline_task_nr <= 1) || (prime_task == NULL))
 		return;
 
 	if (oplus_get_task_pipeline_cpu(p) == -1)
 		return;
-
-	if (unlikely(global_debug_enabled & DEBUG_PIPELINE)) {
-		printk("%s: c_comm=%s, c_pid=%d, c_tgid=%d, comm=%s, pid=%d, tgid=%d, in_mask=%*pbl\n",
-			__func__, current->comm, current->pid, current->tgid, p->comm, p->pid, p->tgid, cpumask_pr_args(in_mask));
-	}
 
 	if (raw_spin_trylock_irqsave(&mtk_rearrange_lock, flags)) {
 		now_ns = ktime_get_raw();

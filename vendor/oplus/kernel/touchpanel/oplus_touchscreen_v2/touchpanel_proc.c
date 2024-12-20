@@ -1853,6 +1853,56 @@ static ssize_t proc_switch_usb_state_read(struct file *file,
 
 DECLARE_PROC_OPS(proc_switch_usb_state_fops, simple_open, proc_switch_usb_state_read, proc_switch_usb_state_write, NULL);
 
+
+static ssize_t proc_disable_touch_event_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
+{
+	int disable_touch_event = 0;
+	char buf[4] = {0};
+	struct touchpanel_data *ts = PDE_DATA(file_inode(file));
+
+	if (count > 4) {
+		TPD_INFO("%s:count > 4\n", __func__);
+		return count;
+	}
+
+	if (!ts) {
+		TPD_INFO("%s: ts is NULL\n", __func__);
+		return count;
+	}
+	touchpanel_trusted_touch_completion(ts);
+
+	tp_copy_from_user(buf, sizeof(buf), buffer, count, 2);
+
+	if (kstrtoint(buf, 10, &disable_touch_event)) {
+		TP_INFO(ts->tp_index, "%s: kstrtoint error\n", __func__);
+		return count;
+	}
+
+	ts->disable_touch_event = disable_touch_event;
+
+	return count;
+}
+
+static ssize_t proc_disable_touch_event_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[PAGESIZE] = {0};
+	struct touchpanel_data *ts = PDE_DATA(file_inode(file));
+
+	if (!ts) {
+		snprintf(page, PAGESIZE - 1, "%d\n", -1); /*no support*/
+
+	} else {
+		snprintf(page, PAGESIZE - 1, "%d\n", ts->disable_touch_event); /*support*/
+	}
+
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+	return ret;
+}
+
+DECLARE_PROC_OPS(proc_disable_touch_event_fops, simple_open, proc_disable_touch_event_read, proc_disable_touch_event_write, NULL);
+
 static ssize_t proc_wireless_charge_detect_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *ppos)
 {
@@ -3938,9 +3988,7 @@ static ssize_t proc_glove_mode_read(struct file *file, char __user *buffer,
 			TS_TP_INFO("not support ts_ops->get_glove_mode\n");
 			return ret;
 		}
-		ts->ts_ops->get_glove_mode(ts->chip_data);
-		snprintf(page, PAGESIZE - 1, "%d\n", ts->glove_enable);
-		TS_TP_INFO("glove mode enable is: %d\n", ts->glove_enable);
+		snprintf(page, PAGESIZE - 1, "%d:%lld\n", ts->glove_enable, ts->monitor_data.glove_enter_count);
 		ret = simple_read_from_buffer(buffer, count, ppos, page, strlen(page));
 		return ret;
 	}
@@ -4230,6 +4278,10 @@ int init_touchpanel_proc_part2(struct touchpanel_data *ts, struct proc_dir_entry
 		{
 			"charge_detect", 0666, NULL, &proc_switch_usb_state_fops, ts, false,
 			ts->charger_pump_support
+		},
+		{
+			"disable_touch_event", 0666, NULL, &proc_disable_touch_event_fops, ts, false,
+			ts->disable_touch_event_support
 		},
 		{
 			"wireless_charge_detect", 0666, NULL, &proc_wireless_charge_detect_fops, ts, false,

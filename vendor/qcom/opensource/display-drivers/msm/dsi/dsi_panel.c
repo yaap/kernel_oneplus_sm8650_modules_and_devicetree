@@ -2385,6 +2385,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-aod-low-mode-command",
 	"qcom,mdss-dsi-ultra-low-power-aod-on-command",
 	"qcom,mdss-dsi-ultra-low-power-aod-off-command",
+	"qcom,mdss-dsi-aod-off-compensation-command",
+	"qcom,mdss-dsi-aod-off-compensation-onepulse-command",
 #endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 #ifdef OPLUS_FEATURE_DISPLAY
 	"qcom,mdss-dsi-post-on-backlight",
@@ -2423,6 +2425,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-timming-pwm-switch-onepulse-command",
 	"qcom,mdss-dsi-pwm-switch-1to3-command",
 	"qcom,mdss-dsi-pwm-switch-3to1-command",
+	"qcom,mdss-dsi-pwm-switch-1to18-command",
+	"qcom,mdss-dsi-pwm-switch-18to1-command",
 	"qcom,mdss-dsi-pwm-switch-threepulse-command",
 	"qcom,mdss-dsi-pwm-switch-high-command",
 	"qcom,mdss-dsi-pwm-switch-low-command",
@@ -2596,6 +2600,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-aod-low-mode-command-state",
 	"qcom,mdss-dsi-ultra-low-power-aod-on-command-state",
 	"qcom,mdss-dsi-ultra-low-power-aod-off-command-state",
+	"qcom,mdss-dsi-aod-off-compensation-command-state",
+	"qcom,mdss-dsi-aod-off-compensation-onepulse-command-state",
 #endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 #ifdef OPLUS_FEATURE_DISPLAY
 	"qcom,mdss-dsi-post-on-backlight-state",
@@ -2634,6 +2640,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-timming-pwm-switch-onepulse-command-state",
 	"qcom,mdss-dsi-pwm-switch-1to3-command-state",
 	"qcom,mdss-dsi-pwm-switch-3to1-command-state",
+	"qcom,mdss-dsi-pwm-switch-1to18-command-state",
+	"qcom,mdss-dsi-pwm-switch-18to1-command-state",
 	"qcom,mdss-dsi-pwm-switch-threepulse-command-state",
 	"qcom,mdss-dsi-pwm-switch-high-command-state",
 	"qcom,mdss-dsi-pwm-switch-low-command-state",
@@ -5446,6 +5454,7 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_IDLE);
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1);
+	panel->pwm_params.into_aod_timestamp = ktime_get();
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
 		       panel->name, rc);
@@ -5485,7 +5494,8 @@ exit:
 int dsi_panel_set_nolp(struct dsi_panel *panel)
 {
 	int rc = 0;
-
+	unsigned int time_interval = 0;
+	unsigned int aod_sleep_time = 0;
 	if (!panel) {
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
@@ -5507,6 +5517,16 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	     panel->power_mode == SDE_MODE_DPMS_LP2))
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_NORMAL);
+
+	if (!strcmp(panel->name, "AA577 P 3 A0020 dsc cmd mode panel")) {
+		time_interval = ktime_to_us(ktime_sub(ktime_get(), panel->pwm_params.into_aod_timestamp));
+		LCD_DEBUG("aod in and off time_interval us = %d\n", time_interval);
+		if (time_interval < INTO_OUT_AOD_INTERVOL) {
+			aod_sleep_time = INTO_OUT_AOD_INTERVOL - time_interval;
+			usleep_range(aod_sleep_time, aod_sleep_time+100);
+		}
+	}
+
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
@@ -5856,6 +5876,17 @@ int dsi_panel_switch(struct dsi_panel *panel)
 	}
 #endif /* OPLUS_FEATURE_DISPLAY */
 
+#ifdef OPLUS_FEATURE_DISPLAY
+	if (panel->pwm_params.oplus_pulse_mutual_fps_flag > 0) {
+		oplus_sde_early_wakeup(panel);
+		oplus_wait_for_vsync(panel);
+		oplus_wait_for_vsync(panel);
+		panel->pwm_params.oplus_pulse_mutual_fps_flag = 0;
+	} else {
+		panel->pwm_params.oplus_pulse_mutual_fps_flag = 0;
+	}
+#endif /* OPLUS_FEATURE_DISPLAY */
+
 #if defined(CONFIG_PXLW_IRIS)
 	if (iris_is_chip_supported())
 		iris_pre_switch(panel, &panel->cur_mode->timing);
@@ -5864,11 +5895,16 @@ int dsi_panel_switch(struct dsi_panel *panel)
 				&panel->cur_mode->priv_info->cmd_sets[TIMING_SWITCH_TYPE_ID],
 				&panel->cur_mode->timing);
 	} else
-#endif
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
+				panel->name, rc);
+#else /* CONFIG_PXLW_IRIS */
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
+#endif /* CONFIG_PXLW_IRIS */
 
 #ifdef OPLUS_FEATURE_DISPLAY_ADFR
 	oplus_adfr_status_reset(panel);
@@ -5983,7 +6019,11 @@ int dsi_panel_enable(struct dsi_panel *panel)
 				panel->name, rc);
 	}
 
-	if (panel->pwm_params.pwm_switch_support_dc
+	if (panel->pwm_params.pwm_switch_support_extend_mode) {
+		if (panel->pwm_params.oplus_dynamic_pulse == ONE_ONE_PULSE) {
+			dsi_panel_tx_cmd_set(panel, DSI_CMD_POWER_ON_PWM_SWITCH_ONEPULSE);
+		}
+	} else if (panel->pwm_params.pwm_switch_support_dc
 		&& oplus_panel_pwm_onepulse_is_enabled(panel)) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_POWER_ON_PWM_SWITCH_ONEPULSE);
 		if (rc)

@@ -16,7 +16,9 @@
 #include <linux/input/mt.h>
 #include "owb.h"
 #include <soc/oplus/dft/kernel_fb.h>
-
+#ifndef CONFIG_REMOVE_OPLUS_FUNCTION
+#include <soc/oplus/system/oplus_project.h>
+#endif
 #if IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER) && defined(CONFIG_OPLUS_POGOPIN_FUNCTION)
 #include <linux/soc/qcom/panel_event_notifier.h>
 #include <linux/msm_drm_notify.h>
@@ -272,8 +274,10 @@ int uart_package_data(char *buf, int len, unsigned char *p_out, int *p_len)
 
 int uart_unpack_data(char *buf, int len, unsigned char *out_buf, int *out_len)
 {
-    *out_len = len - 6;//6:start+addr1+addr2 +  end+sync+sync
-    memcpy(out_buf, &buf[3], *out_len);
+    if (len > 6) {
+        *out_len = len - 6;//6:start+addr1+addr2 +  end+sync+sync
+        memcpy(out_buf, &buf[3], *out_len);
+    }
     return 0;
 }
 
@@ -471,8 +475,14 @@ static int pogo_keyboard_mod_data_process(char *buf, int len)
 
 bool pogo_keyboard_data_is_valid(char *buf, int len)
 {
-    char flag = buf[2];
-    unsigned short crc16 = (buf[len - 5] << 8) | buf[len - 4];
+    char flag = 0;
+    unsigned short crc16 = 0;
+    if (len < 5) {
+        kb_err("keyboard data is not valid!!!\n");
+        return false;
+    }
+    flag = buf[2];
+    crc16 = (buf[len - 5] << 8) | buf[len - 4];
     kb_debug("flag:%2x crc16:%4x cal_crc:%4x\n", flag, crc16, app_crc16_get(buf, len - 5, CRC_TYPE_IBM));
     if (flag == ONE_WIRE_BUS_PACKET_KEYBOARD_ADDR || flag == ONE_WIRE_BUS_PACKET_PAD_ADDR) {
         if (crc16 == app_crc16_get(buf, len - 5, CRC_TYPE_IBM))
@@ -549,16 +559,21 @@ int pogo_keyboard_recv(char *buf, int len)
                 recv_decode_flag = true;
                 recv_decode_cnt++;
                 if(recv_decode_cnt > 3) {
+                    recv_decode_flag = false;
                     break;
                 }
             }
         }
-        if (rec_temp_buf_index >= UART_BUFFER_SIZE)
+
+        if (rec_temp_buf_index >= UART_BUFFER_SIZE) {
             rec_temp_buf_index = 0;
+            recv_start_flag = false;
+        }
 
         if (recv_decode_flag == true) {
             recv_decode_flag = false;
-            if (pogo_keyboard_data_is_valid(recv_buf, rec_temp_buf_index)) {
+            if (rec_temp_buf_index > 6 &&
+                pogo_keyboard_data_is_valid(recv_buf, rec_temp_buf_index)) {
                 uart_unpack_data(recv_buf, rec_temp_buf_index, data_buf, &out_len);
                 // sprintf(TAG, "%s  %d recv ", __func__, __LINE__);
                 // pogo_keyboard_info_buf(data_buf, out_len);
@@ -1037,7 +1052,7 @@ static int pogo_keyboard_get_sn(void)
             kb_err("%s %d err:ret:%d \n", __func__, __LINE__, ret);
             continue;
         }
-        if (memcmp(temp, buf, sizeof(buf)) == 0) {
+        if (memcmp(temp, buf, sizeof(buf)) == 0 && temp[2] == 0x0b) {
             break;
         }
     }
@@ -1428,11 +1443,6 @@ static int pogo_keyboard_get_dts_info(struct platform_device *pdev)
         }
     }
 
-    if (of_get_property(node, "keyboard-ble-name-strings", NULL)) {
-        pogo_keyboard_client->pogopin_ble_support = true;
-
-    }
-
     pogo_keyboard_client->pogo_battery_support = of_property_read_bool(node, "pogopin-battery-support");
     kb_info("%s %d pogo_keyboard_client->pogo_battery_support: %d\n", __func__, __LINE__, pogo_keyboard_client->pogo_battery_support);
 
@@ -1652,13 +1662,16 @@ static char *pogo_keyboard_get_keyboard_name(void)
         return NULL;
     }
 
-    ret = of_property_read_string_index(pogo_keyboard_client->plat_dev->dev.of_node, "keyboard-name-strings",
-        pogo_keyboard_client->keyboard_brand - 1, (const char **)&pogo_keyboard_client->keyboard_name);
-    if (ret) {
-        kb_err("%s %d read keyboard name err: %d\n", __func__, __LINE__, ret);
-        return NULL;
+    if (pogo_keyboard_client->is_confidential != true) {
+	ret = of_property_read_string_index(pogo_keyboard_client->plat_dev->dev.of_node, "keyboard-name-strings",
+	   pogo_keyboard_client->keyboard_brand - 1, (const char **)&pogo_keyboard_client->keyboard_name);
+	if (ret) {
+	   kb_err("%s %d read keyboard name err: %d\n", __func__, __LINE__, ret);
+	   return NULL;
+	}
+    } else {
+	pogo_keyboard_client->keyboard_name = (pogo_keyboard_client->keyboard_brand - 1) ? "OnePlus Keyboard" : "OPLUS Pad Keyboard";
     }
-
     return pogo_keyboard_client->keyboard_name;
 }
 
@@ -1684,13 +1697,16 @@ static char *pogo_keyboard_get_keyboard_ble_name(void)
         return NULL;
     }
 
-    ret = of_property_read_string_index(pogo_keyboard_client->plat_dev->dev.of_node, "keyboard-ble-name-strings",
-        pogo_keyboard_client->keyboard_brand - 1, (const char **)&pogo_keyboard_client->keyboard_ble_name);
-    if (ret) {
-        kb_err("%s %d read keyboard name err: %d\n", __func__, __LINE__, ret);
-        return NULL;
+    if (pogo_keyboard_client->is_confidential != true) {
+	ret = of_property_read_string_index(pogo_keyboard_client->plat_dev->dev.of_node, "keyboard-ble-name-strings",
+	   pogo_keyboard_client->keyboard_brand - 1, (const char **)&pogo_keyboard_client->keyboard_ble_name);
+	if (ret) {
+	   kb_err("%s %d read keyboard name err: %d\n", __func__, __LINE__, ret);
+	   return NULL;
+	}
+    } else {
+	pogo_keyboard_client->keyboard_ble_name = (pogo_keyboard_client->keyboard_brand - 1) ? "OnePlus Keyboard" : "OPLUS Pad Keyboard";
     }
-
     return pogo_keyboard_client->keyboard_ble_name;
 }
 
@@ -2118,8 +2134,8 @@ static bool pogo_keyboard_touch_up(void)
 
 static void pogo_keyboard_connect_send_uevent(void)
 {
-    char status_string[32], mac_string[32], name_string[64];
-    char *envp[] = { status_string, mac_string, name_string, NULL };
+    char status_string[32], mac_string[32], name_string[64], sn_string[32];
+    char *envp[] = { status_string, mac_string, name_string, sn_string, NULL };
     char *keyboard_ble_name = NULL;
     int ret = 0;
 
@@ -2132,12 +2148,14 @@ static void pogo_keyboard_connect_send_uevent(void)
     }
     snprintf(name_string, sizeof(name_string), "keyboard_ble_name=%s", keyboard_ble_name);
 
+    snprintf(sn_string, sizeof(sn_string), "report_sn=%s", pogo_keyboard_client->report_sn);
+
     ret = kobject_uevent_env(&pogo_keyboard_client->uevent_dev->kobj, KOBJ_CHANGE, envp);
     if (ret) {
         kb_err("%s: kobject_uevent_fail, ret = %d", __func__, ret);
     }
 
-    kb_debug("send uevent:%s %s %s.\n", status_string, mac_string, name_string);
+    kb_debug("send uevent:%s %s %s %s.\n", status_string, mac_string, name_string, sn_string);
 }
 
 static int pogo_keyboard_event_process(unsigned char pogo_keyboard_event)
@@ -2162,20 +2180,17 @@ static int pogo_keyboard_event_process(unsigned char pogo_keyboard_event)
                     if (pogo_keyboard_client->pogopin_touch_support)
                         pogo_keyboard_touch_up();
                 }
-
+                pogo_keyboard_get_sn();
                 pogo_keyboard_client->keypad_pluginout_state = 1;//for factory test detect
                 pogo_keyboard_heartbeat_switch(1);
-                if (pogo_keyboard_client->pogopin_ble_support) {
-                    pogo_keyboard_connect_send_uevent();
-                }
                 pogo_keyboard_client->poweroff_timer_check_count = 0;
                 pogo_keyboard_client->sync_lcd_state_cnt = 0;
-                pogo_keyboard_get_sn();
                 if (pogo_keyboard_client->pogopin_fw_support) {
                     pogo_keyboard_ver();
                     pogo_keyboard_client->kpd_fw_status = FW_UPDATE_READY;
                     pogo_keyboard_client->fw_update_progress = 0;
                 }
+                pogo_keyboard_connect_send_uevent();
             }
             break;
         case KEYBOARD_PLUG_OUT_EVENT:
@@ -2191,9 +2206,7 @@ static int pogo_keyboard_event_process(unsigned char pogo_keyboard_event)
                     mdelay(10);
                 pogo_keyboard_input_disconnect();
                 pogo_keyboard_client->pogo_keyboard_status &= ~KEYBOARD_CONNECT_STATUS;
-                if (pogo_keyboard_client->pogopin_ble_support) {
-                    pogo_keyboard_connect_send_uevent();
-                }
+                pogo_keyboard_connect_send_uevent();
                 pogo_keyboard_client->keypad_pluginout_state = 0;//for factory test detect
                 kb_debug("%s %d \n", __func__, __LINE__);
             }
@@ -3402,6 +3415,12 @@ int pogo_keyboard_plat_probe(struct platform_device *device)
         pogo_keyboard_client->pogo_keyboard_task = NULL;
     }
     pogo_keyboard_client->plat_dev = device;
+#ifndef CONFIG_REMOVE_OPLUS_FUNCTION
+    pogo_keyboard_client->is_confidential = is_confidential();  //get confidential status.
+#else
+    pogo_keyboard_client->is_confidential = false;
+#endif
+    pogo_keyboard_start_up_init();
     ret = pogo_keyboard_get_dts_info(device);
     if (ret != 0) {
         goto err_dts_info;
@@ -3432,7 +3451,6 @@ int pogo_keyboard_plat_probe(struct platform_device *device)
     }
 
     pogo_keyboard_register_callback();
-    pogo_keyboard_start_up_init();
 
     INIT_DELAYED_WORK(&pogo_keyboard_client->lcd_notify_reg_work, pogo_keyboard_lcd_notify_reg_work);
     schedule_delayed_work(&pogo_keyboard_client->lcd_notify_reg_work, 0);

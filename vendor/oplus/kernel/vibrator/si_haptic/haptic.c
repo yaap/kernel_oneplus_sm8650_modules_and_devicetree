@@ -172,6 +172,9 @@ static int sih_parse_lra_dts(struct device *dev, sih_haptic_t *sih_haptic,
 	sih_haptic->livetap_support = of_property_read_bool(np, "oplus,livetap_support");
 	hp_info("%s: oplus,livetap_support = %d\n", __func__, sih_haptic->livetap_support);
 
+	sih_haptic->auto_break_mode_support = of_property_read_bool(np, "oplus,auto_break_mode_support");
+	hp_info("oplus,auto_break_mode_support = %d\n", sih_haptic->auto_break_mode_support);
+
 	if (of_property_read_u32(np, "oplus,sih6887_boost_voltage", &max_boost_voltage))
 		SIH_HAPTIC_MAX_VOL = SIH_DRIVER_VBOOST_INIT_VALUE;
 	else
@@ -221,6 +224,52 @@ static int sih_parse_dts(struct device *dev, sih_haptic_t *sih_haptic,
 	} else {
 		sih_haptic->chip_attr.reset_gpio = -1;
 		sih_haptic->chip_attr.irq_gpio = -1;
+	}
+
+	return 0;
+}
+
+static int sih_auto_break_config_regs(sih_haptic_t *sih_haptic)
+{
+	struct device_node *sih_node = sih_haptic->i2c->dev.of_node;
+	uint8_t brk_addr_regs[20] = {0};
+	uint8_t brk_addr_val[20] = {0};
+	int addr_reg_nums = 0;
+	int addr_val_nums = 0;
+	int ret = -1;
+	int i = 0;
+
+	if (sih_node == NULL) {
+		hp_err("%s:haptic device node acquire failed\n", __func__);
+		return -EINVAL;
+	}
+
+	addr_reg_nums = of_property_count_elems_of_size(sih_node, "oplus,brk_addr_regs", sizeof(uint8_t));
+	hp_info("%s: brk addr_reg_nums = %d\n", __func__, addr_reg_nums);
+	/* read brk regs addr config from dts*/
+	ret = of_property_read_u8_array(sih_node, "oplus,brk_addr_regs", brk_addr_regs, addr_reg_nums);
+	if (ret != 0) {
+		hp_err("%s: brk regs nums acquire failed\n", __func__);
+		return -1;
+	}
+
+	addr_val_nums = of_property_count_elems_of_size(sih_node, "oplus,brk_addr_val", sizeof(uint8_t));
+	hp_info("%s: brk addr_val_nums = %d\n", __func__, addr_val_nums);
+	/* read brk regs val config from dts */
+	ret = of_property_read_u8_array(sih_node, "oplus,brk_addr_val", brk_addr_val, addr_val_nums);
+	if (ret != 0) {
+		hp_err("%s: brk regs value acquire failed\n", __func__);
+		return -1;
+	}
+	if (addr_reg_nums != addr_val_nums) {
+		hp_err("%s: brk regs nums acquire failed\n", __func__);
+		return -1;
+	}
+
+	for (i = 0; i < addr_reg_nums; i++) {
+		haptic_regmap_write(sih_haptic->regmapp.regmapping, brk_addr_regs[i],
+			SIH_I2C_OPERA_BYTE_ONE, &brk_addr_val[i]);
+		hp_info("%s: brk write reg = %x, val = %x\n", __func__, brk_addr_regs[i], brk_addr_val[i]);
 	}
 
 	return 0;
@@ -425,12 +474,14 @@ static bool sih_irq_rtp_local_file_handle(sih_haptic_t *sih_haptic)
 		buf_len = inject_data_cnt;
 
 	hp_info("%s:buf_len:%d\n", __func__, buf_len);
+	cpu_latency_qos_add_request(&sih_haptic->pm_qos, CPU_LATENCY_QOC_VALUE);
 	if(buf_len > 0) {
 		ret = sih_haptic->hp_func->write_rtp_data(sih_haptic,
 			&sih_haptic->rtp.rtp_cont->data[sih_haptic->rtp.rtp_cnt], buf_len);
 
 		if (ret < 0) {
 			sih_haptic->hp_func->stop(sih_haptic);
+			cpu_latency_qos_remove_request(&sih_haptic->pm_qos);
 			sih_haptic->hp_func->set_rtp_aei(sih_haptic, false);
 			sih_haptic->rtp.rtp_init = false;
 			mutex_unlock(&sih_haptic->rtp.rtp_lock);
@@ -450,11 +501,13 @@ static bool sih_irq_rtp_local_file_handle(sih_haptic_t *sih_haptic)
 		else
 			hp_info("%s:rtp update complete!\n", __func__);
 		sih_haptic->hp_func->set_rtp_aei(sih_haptic, false);
+		cpu_latency_qos_remove_request(&sih_haptic->pm_qos);
 		sih_haptic->rtp.rtp_init = false;
 		sih_chip_state_recovery(sih_haptic);
 		mutex_unlock(&sih_haptic->rtp.rtp_lock);
 		return false;
 	}
+	cpu_latency_qos_remove_request(&sih_haptic->pm_qos);
 	mutex_unlock(&sih_haptic->rtp.rtp_lock);
 
 	return true;
@@ -535,8 +588,8 @@ static void sih_rtp_play_func(sih_haptic_t *sih_haptic, uint8_t mode)
 
 	hp_info("%s:the rtp cont len is %d\n", __func__, rtp_cont->len);
 	sih_haptic->rtp.rtp_cnt = 0;
-	cpu_latency_qos_add_request(&sih_haptic->pm_qos, CPU_LATENCY_QOC_VALUE);
 	mutex_lock(&sih_haptic->rtp.rtp_lock);
+	cpu_latency_qos_add_request(&sih_haptic->pm_qos, CPU_LATENCY_QOC_VALUE);
 	while (1) {
 		if (!sih_haptic->hp_func->get_rtp_fifo_full_state(sih_haptic)) {
 			cont_len = rtp_cont->len;
@@ -591,9 +644,8 @@ static void sih_rtp_play_func(sih_haptic_t *sih_haptic, uint8_t mode)
 		sih_haptic->chip_ipara.play_mode == SIH_RTP_MODE) {
 		sih_haptic->hp_func->set_rtp_aei(sih_haptic, true);
 	}
-
-	mutex_unlock(&sih_haptic->rtp.rtp_lock);
 	cpu_latency_qos_remove_request(&sih_haptic->pm_qos);
+	mutex_unlock(&sih_haptic->rtp.rtp_lock);
 }
 
 static void sih_rtp_play(sih_haptic_t *sih_haptic, uint8_t mode)
@@ -1456,20 +1508,16 @@ static ssize_t rtp_store(struct device *dev,
 		audio_delay = sih_haptic->rtp.audio_delay;
 	}
 
-	if (!val) {
-		sih_op_clean_status(sih_haptic);
-		sih_haptic->rtp.rtp_file_num = val;
-		sih_haptic->hp_func->stop(sih_haptic);
-		sih_haptic->hp_func->set_rtp_aei(sih_haptic, false);
-		sih_haptic->hp_func->clear_interrupt_state(sih_haptic);
-	}
+	sih_op_clean_status(sih_haptic);
+	sih_haptic->rtp.rtp_file_num = val;
+	sih_haptic->hp_func->stop(sih_haptic);
+	sih_haptic->hp_func->set_rtp_aei(sih_haptic, false);
+	sih_haptic->hp_func->clear_interrupt_state(sih_haptic);
+
 	mutex_unlock(&sih_haptic->lock);
 
-	if (val < NUM_WAVEFORMS) {
-		sih_haptic->rtp.rtp_file_num = val;
-		if (val) {
-			schedule_work(&sih_haptic->rtp.rtp_work);
-		}
+	if (val > 0 && val < NUM_WAVEFORMS) {
+		schedule_work(&sih_haptic->rtp.rtp_work);
 	} else {
 		hp_err("%s: input number err:%d\n", __func__, val);
 	}
@@ -4387,6 +4435,12 @@ static int vibrator_chip_init(sih_haptic_t *sih_haptic)
 	ret = sih_lra_config_load(sih_haptic);
 	if (ret < 0)
 		return ret;
+	if (sih_haptic->auto_break_mode_support) {
+		sih_auto_break_config_regs(sih_haptic);
+		sih_haptic->hp_func->set_brk_state(sih_haptic, SIH_RAM_MODE, true);
+		sih_haptic->hp_func->set_brk_state(sih_haptic, SIH_RTP_MODE, true);
+		hp_info("%s: auto break opened\n", __func__);
+	}
 	sih_op_clean_status(sih_haptic);
 	hp_info("%s:end\n", __func__);
 	return ret;

@@ -366,6 +366,7 @@ typedef struct sih_haptic {
 	uint32_t gun_type;
 	uint32_t bullet_nr;
 	uint32_t gun_mode;
+	bool auto_break_mode_support;
 #endif
 } sih_haptic_t;
 

@@ -82,10 +82,10 @@ static ssize_t proc_debug_level_write(struct file *file,
 	mutex_lock(&tcm->mutex);
 	if (tcm->debug_info_ops && tcm->debug_info_ops->tp_data_record_write) {
 		if (tcm->data_record > 0 && (tp_hbp_debug == LEVEL_DEBUG)) {
-			tcm->debug_info_ops->tp_data_record_write(tcm, tcm->data_record);
+			tcm->differ_read_every_frame = true;
 			tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "data_record_on");
 		} else {
-			tcm->debug_info_ops->tp_data_record_write(tcm, 0);
+			tcm->differ_read_every_frame = false;
 			tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "data_record_off");
 		}
 	}
@@ -1011,10 +1011,10 @@ static ssize_t tp_data_record_write_func(struct file *file,
 	tcm->data_record = value;
 	if (tcm->debug_info_ops && tcm->debug_info_ops->tp_data_record_write) {
 		if (tcm->data_record > 0 && (tp_hbp_debug == LEVEL_DEBUG)) {
-			tcm->debug_info_ops->tp_data_record_write(tcm, tcm->data_record);
+			tcm->differ_read_every_frame = true;
 			tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "data_record_on");
 		} else {
-			tcm->debug_info_ops->tp_data_record_write(tcm, 0);
+			tcm->differ_read_every_frame = false;
 			tp_healthinfo_report(&tcm->monitor_data, HEALTH_REPORT, "data_record_off");
 		}
 	}

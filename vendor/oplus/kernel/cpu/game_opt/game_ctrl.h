@@ -11,11 +11,13 @@
 #include <kernel/sched/sched.h>
 
 #define MAX_TID_COUNT 256
-#define MAX_TASK_NR 15
+#define MAX_TASK_NR 18
 #define RESULT_PAGE_SIZE 1024
 
 extern struct proc_dir_entry *game_opt_dir;
 extern struct proc_dir_entry *early_detect_dir;
+
+extern pid_t game_pid;
 
 extern atomic_t have_valid_game_pid;
 extern atomic_t have_valid_render_pid;
@@ -34,6 +36,7 @@ int debug_init(void);
 
 bool get_task_name(pid_t pid, struct task_struct *in_task, char *name);
 void ui_assist_threads_wake_stat(struct task_struct *task);
+bool task_is_fair(struct task_struct *task);
 
 /*----------------------------- early detect start -----------------------------*/
 enum ED_BOOST_TYPE {

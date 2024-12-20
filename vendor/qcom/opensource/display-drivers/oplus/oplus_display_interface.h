@@ -20,6 +20,7 @@
 #define OPLUS_PINCTRL_NAMES_COUNT 2
 #define OPLUS_BACKLIGHT_WINDOW_SIZE 5
 #define REG_SIZE 256
+#define PULSE_MUTUAL_FPS_LOWER_LIMIT -100
 
 extern const char *cmd_set_prop_map[DSI_CMD_SET_MAX];
 

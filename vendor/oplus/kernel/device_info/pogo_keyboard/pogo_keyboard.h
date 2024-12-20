@@ -353,7 +353,6 @@ struct pogo_keyboard_data {
     bool lcd_notify_reg;
     struct delayed_work lcd_notify_reg_work;
 
-    bool pogopin_ble_support;
     unsigned long long mac_addr;                //keyboard mac, report when plug in by keyboard
     struct class *uevent_class;
     struct device *uevent_dev;
@@ -374,6 +373,7 @@ struct pogo_keyboard_data {
     unsigned short crc_ibm_init_val;
     bool get_crc_ibm_from_dts;
     unsigned short pogo_id_product;
+    bool is_confidential;
 
     //for pogopin firmware update
     bool pogopin_fw_support;

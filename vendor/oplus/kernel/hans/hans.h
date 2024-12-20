@@ -117,6 +117,16 @@ enum pkg_cmd {
 	PKG_CMD_MAX
 };
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0))
+/* to adapt binder fg_todo list*/
+struct oplus_binder_proc {
+	struct list_head fg_todo;
+	bool fg_inited;
+	int fg_count;
+	int continuous_fg;
+};
+#endif
+
 static inline bool is_jobctl_frozen(struct task_struct *task)
 {
 	return ((task->jobctl & JOBCTL_TRAP_FREEZE) != 0);

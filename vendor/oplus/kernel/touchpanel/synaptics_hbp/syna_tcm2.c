@@ -431,6 +431,8 @@ static int syna_dev_set_gesture_type(struct syna_tcm *tcm, unsigned short value)
 {
 	int retval = 0;
 
+	LOGI("%s: %u\n", __func__, value);
+
 	/* Bit0 -- Double Tap, Bit13 -- Single Tap */
 	retval = syna_tcm_set_dynamic_config(tcm->tcm_dev,
 			DC_GESTURE_TYPE_ENABLE,
@@ -461,10 +463,21 @@ exit:
 static int syna_dev_set_fingerprint_enable(struct syna_tcm *tcm, unsigned short value)
 {
 	int retval = 0;
+	unsigned short config = 0;
+
+	/*bit4 error finger debug event*/
+	retval = syna_tcm_get_dynamic_config(tcm->tcm_dev, DC_TOUCH_AND_HOLD, &config, RESP_IN_ATTN);
+	if (retval < 0) {
+		LOGE("Fail to disalbe HBP Active Frame report\n");
+	}
+
+	config = (config & 0xf0) | (value & 0x0f);
+
+	LOGI("HBP set touch_and_hold(0x%04x)\n", config);
 
 	retval = syna_tcm_set_dynamic_config(tcm->tcm_dev,
 			DC_TOUCH_AND_HOLD,
-			value,
+			config,
 			RESP_IN_ATTN);
 	if (retval < 0) {
 		LOGE("Fail to set gesture type\n");
@@ -2389,7 +2402,14 @@ static void ts_panel_notifier_callback(enum panel_event_notifier_tag tag,
 	case DRM_PANEL_EVENT_BLANK_LP:
 		LOGI("received lp event\n");
 		if (!notification->notif_data.early_trigger) {
-			syna_dev_suspend(&tcm->pdev->dev);
+			if (tcm->speedup_resume_wq) {
+				flush_workqueue(tcm->speedup_resume_wq);        /*wait speedup_resume_wq done*/
+			}
+			syna_dev_early_suspend(&tcm->pdev->dev);
+			if (!tcm->fp_active) {
+				syna_dev_suspend(&tcm->pdev->dev);
+				tcm->fb_ready = 0;
+			}
 		}
 		break;
 	case DRM_PANEL_EVENT_FPS_CHANGE:
@@ -3713,6 +3733,12 @@ static void syna_main_register(struct seq_file *s, void *chip_data)
 	unsigned int temp = 0;
 	struct syna_tcm *tcm_info = (struct syna_tcm *)chip_data;
 
+	if (tcm_info->tcm_dev->is_sleep) {
+		TPD_INFO("Not in resume over state\n");
+		seq_printf(s, "Not in resume over state\n");
+		return;
+	}
+
 	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev,
 					     DC_IN_WAKEUP_GESTURE_MODE,
 					     &config, 0);
@@ -3797,139 +3823,6 @@ static void syna_main_register(struct seq_file *s, void *chip_data)
 	} else {
 		TPD_INFO("grip direction(1:ver 0:hor): 0x%0X\n", config);
 		seq_printf(s, "grip direction(0:ver 1:hor): 0x%0X\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_DARK_ZONE_ENABLE,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("dark zone enable : ERROR\n");
-		seq_printf(s, "dark zone enable : ERROR\n");
-
-	} else {
-		TPD_INFO("dark zone enable : 0x%0X\n", config);
-		seq_printf(s, "dark zone enable : 0x%0X\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_DARK_ZONE_X,
-					     &config, 0);
-
-	if (retval < 0) {
-		TPD_INFO("dark zone x : ERROR\n");
-		seq_printf(s, "dark zone x : ERROR\n");
-
-	} else {
-		TPD_INFO("dark zone x : 0x%0X\n", config);
-		seq_printf(s, "dark zone x : 0x%0X\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_DARK_ZONE_Y,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("dark zone y : ERROR\n");
-		seq_printf(s, "dark zone y : ERROR\n");
-
-	} else {
-		TPD_INFO("dark zone y : 0x%0X\n", config);
-		seq_printf(s, "dark zone y : 0x%0X\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_ABS_DARK_SEL,
-					     &config, 0);
-
-	if (retval < 0) {
-		TPD_INFO("abs dark sel : ERROR\n");
-		seq_printf(s, "abs dark sel : ERROR\n");
-
-	} else {
-		TPD_INFO("abs dark sel : 0x%0X\n", config);
-		seq_printf(s, "abs dark sel : 0x%0X\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_ABS_DARK_X,
-					     &config, 0);
-
-	if (retval < 0) {
-		TPD_INFO("abs dark zone x : ERROR\n");
-		seq_printf(s, "abs dark zone x : ERROR\n");
-	} else {
-		TPD_INFO("abs dark zone x : %d\n", config);
-		seq_printf(s, "abs dark zone x : %d\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_ABS_DARK_Y,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("abs dark zone y : ERROR\n");
-		seq_printf(s, "abs dark zone y : ERROR\n");
-
-	} else {
-		TPD_INFO("abs dark zone y : %d\n", config);
-		seq_printf(s, "abs dark zone y : %d\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_ABS_DARK_U,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("abs dark zone U : ERROR\n");
-		seq_printf(s, "abs dark zone U : ERROR\n");
-	} else {
-		TPD_INFO("abs dark zone U : %d\n", config);
-		seq_printf(s, "abs dark zone U : %d\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_ABS_DARK_V,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("abs dark zone V : ERROR\n");
-		seq_printf(s, "abs dark zone V : ERROR\n");
-	} else {
-		TPD_INFO("abs dark zone V : %d\n", config);
-		seq_printf(s, "abs dark zone V : %d\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_CONDTION_ZONE,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("condtion zone : ERROR\n");
-		seq_printf(s, "condtion zone : ERROR\n");
-	} else {
-		TPD_INFO("condtion zone : %d\n", config);
-		seq_printf(s, "condtion zone : 0x%0X\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_SPECIAL_ZONE_X,
-					     &config, 0);
-
-	if (retval < 0) {
-		TPD_INFO("special zone x : ERROR\n");
-		seq_printf(s, "special zone x : ERROR\n");
-
-	} else {
-		TPD_INFO("special zone x : %d\n", config);
-		seq_printf(s, "special zone x : %d\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_SPECIAL_ZONE_Y,
-					     &config, 0);
-
-	if (retval < 0) {
-		TPD_INFO("special zone y : ERROR\n");
-		seq_printf(s, "special zone y : ERROR\n");
-
-	} else {
-		TPD_INFO("special zone y : %d\n", config);
-		seq_printf(s, "special zone y : %d\n", config);
-	}
-
-	retval = syna_tcm_get_dynamic_config(tcm_info->tcm_dev, DC_GRIP_SPECIAL_ZONE_L,
-					     &config, 0);
-	if (retval < 0) {
-		TPD_INFO("special zone len : ERROR\n");
-		seq_printf(s, "special zone len : ERROR\n");
-
-	} else {
-		TPD_INFO("special zone len : %d\n", config);
-		seq_printf(s, "special zone len : %d\n", config);
 	}
 
 	TPD_INFO("Buid ID:%d, Custom ID:0x%s\n",
@@ -4184,6 +4077,12 @@ static void syna_delta_read(struct seq_file *s, void *chip_data)
 	int retval;
 	struct syna_tcm *tcm_info = (struct syna_tcm *)chip_data;
 
+	if (tcm_info->tcm_dev->is_sleep) {
+		TPD_INFO("Not in resume over state\n");
+		seq_printf(s, "Not in resume over state\n");
+		return;
+	}
+
 	retval = syna_tcm_set_dynamic_config(tcm_info->tcm_dev, DC_NO_DOZE, 1, 0);
 
 	if (retval < 0) {
@@ -4217,6 +4116,12 @@ static void syna_baseline_read(struct seq_file *s, void *chip_data)
 	int retval;
 	struct syna_tcm *tcm_info = (struct syna_tcm *)chip_data;
 
+	if (tcm_info->tcm_dev->is_sleep) {
+		TPD_INFO("Not in resume over state\n");
+		seq_printf(s, "Not in resume over state\n");
+		return;
+	}
+
 	retval = syna_tcm_set_dynamic_config(tcm_info->tcm_dev, DC_NO_DOZE, 1, 0);
 
 	if (retval < 0) {
@@ -4247,6 +4152,12 @@ static void syna_reserve_read(struct seq_file *s, void *chip_data)
 {
 	int retval;
 	struct syna_tcm *tcm_info = (struct syna_tcm *)chip_data;
+
+	if (tcm_info->tcm_dev->is_sleep) {
+		TPD_INFO("Not in resume over state\n");
+		seq_printf(s, "Not in resume over state\n");
+		return;
+	}
 
 	retval = syna_tcm_set_dynamic_config(tcm_info->tcm_dev, DC_NO_DOZE, 1, 0);
 

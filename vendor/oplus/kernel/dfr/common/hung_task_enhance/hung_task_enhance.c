@@ -299,7 +299,7 @@ static void oplus_check_hung_task(struct task_struct *t, unsigned long timeout, 
 		}
 		last_death_time = cur_death_time;
 
-        if (get_eng_version() == AGING)
+        if (get_eng_version() == AGING || get_eng_version() == HIGH_TEMP_AGING)
             BUG();
 
 		t->flags |= PF_KILLING;

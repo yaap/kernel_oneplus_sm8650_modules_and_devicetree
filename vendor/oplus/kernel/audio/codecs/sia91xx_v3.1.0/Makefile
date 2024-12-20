@@ -16,6 +16,9 @@ COMPILE_TO_MODULE = y
 PLATFORM_TYPE = mtk
 EXTRA_CFLAGS += $(call cc-option,-Wno-date-time,)
 
+ifeq ($(PLATFORM_TYPE),mtk)
+EXTRA_CFLAGS += -DOPLUS_FEATURE_SPEAKER_MUTE
+endif
 
 
 snd-soc-sipa-objs := \

@@ -395,15 +395,16 @@ static int register_all_hooks(void)
 	}
 #endif
 #ifdef CONFIG_HYBRIDSWAP_SWAPD
-	/* For GKI reason we use get_page_wmark_hook rather than rmqueue_hook. Both are fine. */
+	/* For GKI reason we use alloc_pages_slowpath_hook rather than rmqueue_hook. Both are fine. */
 	/* rmqueue_hook */
 	/* REGISTER_HOOK(rmqueue); */
-	/* get_page_wmark_hook */
-	rc = register_trace_android_vh_get_page_wmark(hybridswapd_ops->vh_get_page_wmark, NULL);
+	/* alloc_pages_slowpath_hook */
+	rc = register_trace_android_vh_alloc_pages_slowpath(hybridswapd_ops->vh_alloc_pages_slowpath, NULL);
 	if (rc) {
-		log_err("register get_page_wmark_hook failed\n");
-		goto err_out_get_page_wmark;
+		log_err("register alloc_pages_slowpath_hook failed\n");
+		goto err_out_alloc_pages_slowpath;
 	}
+
 	/* tune_scan_type_hook */
 	REGISTER_HOOK(tune_scan_type);
 
@@ -433,8 +434,8 @@ err_out_shrink_slab_bypass:
 ERROR_OUT(tune_scan_type):
 	/* UNREGISTER_HOOK(rmqueue);
 ERROR_OUT(rmqueue): */
-	unregister_trace_android_vh_get_page_wmark(hybridswapd_ops->vh_get_page_wmark, NULL);
-err_out_get_page_wmark:
+	unregister_trace_android_vh_alloc_pages_slowpath(hybridswapd_ops->vh_alloc_pages_slowpath, NULL);
+ERROR_OUT(alloc_pages_slowpath):
 #endif
 #ifdef CONFIG_CONT_PTE_HUGEPAGE
 	unregister_trace_android_vh_si_meminfo_adjust(oplus_mm_common_hook, NULL);
@@ -462,8 +463,8 @@ static void unregister_all_hook(void)
 #endif
 #ifdef CONFIG_HYBRIDSWAP_SWAPD
 	/* UNREGISTER_HOOK(rmqueue); */
-	unregister_trace_android_vh_get_page_wmark(hybridswapd_ops->vh_get_page_wmark, NULL);
 	UNREGISTER_HOOK(tune_scan_type);
+	unregister_trace_android_vh_alloc_pages_slowpath(hybridswapd_ops->vh_alloc_pages_slowpath, NULL);
 #endif
 	UNREGISTER_HOOK(shrink_node_memcgs);
 }

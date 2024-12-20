@@ -66,6 +66,7 @@ enum oplus_ofp_longrui_aod_mode {					/* system setting */
 	OPLUS_OFP_AOD_ON = BIT(0),
 	OPLUS_OFP_A_MIRROR_TO_THE_END_AOD_MODE = BIT(1),
 	OPLUS_OFP_FULL_SCREEN_AOD_MODE = BIT(2),
+	OPLUS_OFP_INSPIRATIONAL_PHOTO_FRAME = BIT(3),
 };
 
 /* remember to initialize params */
@@ -194,6 +195,7 @@ bool oplus_ofp_optical_new_solution_is_enabled(void);
 bool oplus_ofp_local_hbm_is_enabled(void);
 bool oplus_ofp_ultrasonic_is_enabled(void);
 bool oplus_ofp_video_mode_aod_fod_is_enabled(void);
+bool oplus_ofp_need_to_do_aod_off_compensation(void);
 bool oplus_ofp_get_hbm_state(void);
 int oplus_ofp_property_update(void *sde_connector, void *sde_connector_state, int prop_id, uint64_t prop_val);
 
@@ -224,6 +226,7 @@ int oplus_ofp_video_mode_aod_handle(void *dsi_display, void *dsi_display_mode);
 void oplus_ofp_aod_off_set_work_handler(struct work_struct *work_item);
 int oplus_ofp_touchpanel_event_notifier_call(struct notifier_block *nb, unsigned long action, void *data);
 int oplus_ofp_aod_off_hbm_on_delay_check(void *sde_encoder_phys);
+int oplus_ofp_aod_off_cmdq_delay_check(void *dsi_panel);
 int oplus_ofp_aod_off_backlight_recovery(void *sde_encoder_virt);
 int oplus_ofp_ultra_low_power_aod_update(void *sde_encoder_virt);
 
