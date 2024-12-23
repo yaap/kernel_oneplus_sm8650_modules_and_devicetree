@@ -4367,6 +4367,26 @@ int init_touchpanel_proc_part3(struct touchpanel_data *ts, struct proc_dir_entry
 	return ret;
 }
 
+static inline ssize_t single_tap_pressed_get(struct file *file,
+				char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char page[PAGESIZE] = {0};
+	struct touchpanel_data *ts = PDE_DATA(file_inode(file));
+	snprintf(page, PAGESIZE - 1, "%d\n", ts->single_tap_pressed);
+	return simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+}
+DECLARE_PROC_OPS(proc_single_tap_pressed, simple_open, single_tap_pressed_get, NULL, NULL);
+
+static inline ssize_t double_tap_pressed_get(struct file *file,
+				char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char page[PAGESIZE] = {0};
+	struct touchpanel_data *ts = PDE_DATA(file_inode(file));
+	snprintf(page, PAGESIZE - 1, "%d\n", ts->double_tap_pressed);
+	return simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+}
+DECLARE_PROC_OPS(proc_double_tap_pressed, simple_open, double_tap_pressed_get, NULL, NULL);
+
 int init_touchpanel_proc(struct touchpanel_data *ts)
 {
 	int ret = 0;
@@ -4400,6 +4420,8 @@ int init_touchpanel_proc(struct touchpanel_data *ts)
 			ts->noise_modetest_support
 		},
 		{"tp_fw_update", 0666, NULL, &proc_fw_update_ops, ts, false, true},
+		{"single_tap_pressed", 0666, NULL, &proc_single_tap_pressed, ts, false, true},
+		{"double_tap_pressed", 0666, NULL, &proc_double_tap_pressed, ts, false, true},
 		{"oplus_register_info", 0664, NULL, &proc_register_info_fops, ts, false, true},
 		{
 			"incell_panel", 0664, NULL, &proc_incell_panel_fops, ts, false,

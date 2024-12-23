@@ -1306,6 +1306,8 @@ struct touchpanel_data {
 #endif
 	struct task_struct *suspend_task;
 	int supspend_task_error_cnt;
+	u8 double_tap_pressed;
+	u8 single_tap_pressed;
 };
 
 #ifdef CONFIG_OPLUS_TP_APK

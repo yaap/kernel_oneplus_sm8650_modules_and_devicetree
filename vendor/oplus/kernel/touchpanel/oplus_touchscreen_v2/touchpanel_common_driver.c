@@ -740,12 +740,11 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 
 	if (ts->panel_data.manufacture_info.manufacture
 		&& !strncmp(ts->panel_data.manufacture_info.manufacture, "SEC_", 4)) {
-		if (gesture_info_temp.gesture_type == SINGLE_TAP) {
-			if (sec_double_tap(&gesture_info_temp) == 1) {
-				gesture_info_temp.gesture_type = DOU_TAP;
-			}
-		}
+		ts->single_tap_pressed = (gesture_info_temp.gesture_type == SINGLE_TAP) ? 1 : 0;
+		ts->double_tap_pressed = (sec_double_tap(&gesture_info_temp) == 1) ? 1 : 0;
 	}
+	sysfs_notify(&ts->client->dev.kobj, NULL, "double_tap_pressed");
+	sysfs_notify(&ts->client->dev.kobj, NULL, "single_tap_pressed");
 
 	TP_INFO(ts->tp_index, "detect %s gesture\n",
 		gesture_info_temp.gesture_type == DOU_TAP ? "double tap" :
