@@ -740,12 +740,11 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 
 	if (ts->panel_data.manufacture_info.manufacture
 		&& !strncmp(ts->panel_data.manufacture_info.manufacture, "SEC_", 4)) {
-		if (gesture_info_temp.gesture_type == SINGLE_TAP) {
-			if (sec_double_tap(&gesture_info_temp) == 1) {
-				gesture_info_temp.gesture_type = DOU_TAP;
-			}
-		}
+		ts->single_tap_pressed = (gesture_info_temp.gesture_type == SINGLE_TAP) ? 1 : 0;
+		ts->double_tap_pressed = (sec_double_tap(&gesture_info_temp) == 1) ? 1 : 0;
 	}
+	sysfs_notify(&ts->client->dev.kobj, NULL, "double_tap_pressed");
+	sysfs_notify(&ts->client->dev.kobj, NULL, "single_tap_pressed");
 
 	TP_INFO(ts->tp_index, "detect %s gesture\n",
 		gesture_info_temp.gesture_type == DOU_TAP ? "double tap" :
@@ -832,6 +831,24 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		touch_call_notifier_fp(ts, &ts->fp_info);
 	}
 }
+
+static inline ssize_t single_tap_pressed_get(struct device *device,
+				struct device_attribute *attribute,
+				char *buffer)
+{
+	struct touchpanel_data *ts = dev_get_drvdata(device);
+	return scnprintf(buffer, PAGE_SIZE, "%d\n", ts->single_tap_pressed);
+}
+static DEVICE_ATTR(single_tap_pressed, S_IRUGO, single_tap_pressed_get, NULL);
+
+static inline ssize_t double_tap_pressed_get(struct device *device,
+				struct device_attribute *attribute,
+				char *buffer)
+{
+	struct touchpanel_data *ts = dev_get_drvdata(device);
+	return scnprintf(buffer, PAGE_SIZE, "%d\n", ts->double_tap_pressed);
+}
+static DEVICE_ATTR(double_tap_pressed, S_IRUGO, double_tap_pressed_get, NULL);
 
 void tp_touch_btnkey_release(unsigned int tp_index)
 {
@@ -3835,6 +3852,32 @@ static int ts_check_panel_dt(struct device *dev, struct touchpanel_data *ts)
 }
 #endif
 
+static struct attribute *gesture_attributes[] = {
+        &dev_attr_double_tap_pressed.attr,
+        &dev_attr_single_tap_pressed.attr,
+        NULL
+};
+
+static struct attribute_group gesture_attribute_group = {
+        .attrs = gesture_attributes
+};
+
+int touchpanel_gesture_create_sysfs(struct touchpanel_data *ts)
+{
+        int ret = 0;
+
+        ret = sysfs_create_group(&ts->dev->kobj, &gesture_attribute_group);
+        if (ret) {
+                TPD_INFO("[EX]: sysfs_create_group() failed!!");
+                sysfs_remove_group(&ts->dev->kobj, &gesture_attribute_group);
+                return -ENOMEM;
+        } else {
+                TPD_INFO("[EX]: sysfs_create_group() succeeded!!");
+        }
+
+        return ret;
+}
+
 /**
  * register_common_touch_device - parse dts, get resource defined in Dts
  * @pdata: touchpanel_data, using for common driver
@@ -4256,6 +4299,11 @@ int register_common_touch_device(struct touchpanel_data *pdata)
 		}
 	}
 #endif
+
+	ret = touchpanel_gesture_create_sysfs(ts);
+	if (ret) {
+		TP_INFO(ts->tp_index, "create touchpanel_gesture sysfs node fail");
+	}
 
 #ifdef CONFIG_TOUCHPANEL_TRUSTED_TOUCH
 	ret = touchpanel_trusted_touch_create_sysfs(ts);

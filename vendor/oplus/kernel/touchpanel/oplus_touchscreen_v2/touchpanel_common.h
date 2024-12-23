@@ -1306,6 +1306,8 @@ struct touchpanel_data {
 #endif
 	struct task_struct *suspend_task;
 	int supspend_task_error_cnt;
+	u8 double_tap_pressed;
+	u8 single_tap_pressed;
 };
 
 #ifdef CONFIG_OPLUS_TP_APK
@@ -1469,6 +1471,8 @@ extern int tp_judge_ic_match_commandline(struct panel_info *panel_data);
 extern int request_firmware_select(const struct firmware **firmware_p, const char *name, struct device *device);
 bool is_oem_unlocked(void);
 int  get_oem_verified_boot_state(void);
+
+int touchpanel_gesture_create_sysfs(struct touchpanel_data *ts);
 
 #ifndef CONFIG_TOUCHPANEL_NOTIFY
 int opticalfp_irq_handler(struct fp_underscreen_info *fp_tpinfo);
