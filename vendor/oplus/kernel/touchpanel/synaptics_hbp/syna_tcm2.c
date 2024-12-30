@@ -3499,8 +3499,8 @@ static int syna_dev_probe(struct platform_device *pdev)
 	tcm->helper_enabled = false;
 #endif
 #ifdef ENABLE_WAKEUP_GESTURE
-	tcm->lpwg_enabled = false;
-	tcm->gesture_type = 0x0000; /* Disable All Gesture */
+	tcm->lpwg_enabled = true;
+	tcm->gesture_type = 0xFE; //Enable Double Tap (Bit0) and Single Tap (Bit 13)
 	tcm->touch_and_hold = 0;
 	syna_dev_update_lpwg_status(tcm);
 #else
