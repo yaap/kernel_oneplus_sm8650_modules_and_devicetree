@@ -1803,7 +1803,7 @@ static int syna_cdev_ioctl_send_message(struct syna_tcm *tcm,
 	struct tcm_buffer resp_data_buf;
 	unsigned short config = 0;
 	unsigned char *ubuf_krn_ptr = NULL;
-	int set_gesture_en = 0;
+	int set_gesture_en = 1;
 	int retry_cnt = 5;
 	int cpy_len = 0;
 	int ret = 0;
@@ -1899,13 +1899,7 @@ send_cmd_again:
 		delay_ms_resp = g_sysfs_io_polling_interval;
 
 	if ((data[0] == CMD_SET_DYNAMIC_CONFIG) && (payload_length == 3)) {
-		if (data[3] == DC_GESTURE_TYPE_ENABLE) {
-			tcm->gesture_type = (unsigned short)syna_pal_le2_to_uint(&data[4]);
-			syna_dev_update_lpwg_status(tcm);
-			syna_sysfs_set_fingerprint_prepare(tcm);
-			set_gesture_en = 1;
-			LOGE("HBP set gesture_type(0x%04x)\n", tcm->gesture_type);
-		} else if (data[3] == DC_TOUCH_AND_HOLD) {
+		if (data[3] == DC_TOUCH_AND_HOLD) {
 			tcm->touch_and_hold = (unsigned short)syna_pal_le2_to_uint(&data[4]);
 			syna_dev_update_lpwg_status(tcm);
 			syna_sysfs_set_fingerprint_prepare(tcm);
