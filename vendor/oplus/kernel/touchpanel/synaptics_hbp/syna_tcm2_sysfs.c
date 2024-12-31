@@ -2881,9 +2881,8 @@ static int syna_cdev_ioctls(struct inode *inp, struct file *filp,
 	if ((_IOC_NR(cmd) == CUS_SET_DRIVER_STATUS_ID)/* && tcm->waiting_frame == 1*/) {
 		LOGE("IOC_ID:0x%02X CUS received\n", (unsigned int)_IOC_NR(cmd));
 		/* instert one report to wakeup wait_frame */
-		tcm->use_short_frame_waiting = 1;
+		tcm->use_short_frame_waiting = 0;
 		syna_cdev_update_doze_state_report_queue(tcm);
-		LOGE("Pre set short_frame_waiting = 1 \n");
 	}
 
 	syna_pal_mutex_lock(&tcm->extif_mutex);
