@@ -109,24 +109,6 @@ static ssize_t proc_debug_enabled_read(struct file *file, char __user *buf,
 static ssize_t proc_sched_assist_enabled_write(struct file *file, const char __user *buf,
 		size_t count, loff_t *ppos)
 {
-	char buffer[13];
-	int err, val;
-
-	memset(buffer, 0, sizeof(buffer));
-
-	if (count > sizeof(buffer) - 1)
-		count = sizeof(buffer) - 1;
-
-	if (copy_from_user(buffer, buf, count))
-		return -EFAULT;
-
-	buffer[count] = '\0';
-	err = kstrtoint(strstrip(buffer), 10, &val);
-	if (err)
-		return err;
-
-	global_sched_assist_enabled = val;
-
 	return count;
 }
 
