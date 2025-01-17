@@ -581,7 +581,7 @@ int syna_dev_disable_lbp_mode(struct syna_tcm *tcm)
 	}
 	LOGI("Enable log report\n");
 
-	//tcm->hbp_enabled = true;
+	tcm->hbp_enabled = true;
 
 exit:
 	return retval;
@@ -837,6 +837,7 @@ static void syna_dev_report_input_events(struct syna_tcm *tcm)
 	object_data = &tcm->tp_data.object_data[0];
 
 #ifdef ENABLE_WAKEUP_GESTURE
+	pr_err("XXX: wakeup gesture");
 	if (tcm->pwr_state == LOW_PWR/* && tcm->irq_wake*/) {
 		if (touch_data->gesture_id) {
 			LOGD("Gesture detected, id:%d\n",
@@ -1456,6 +1457,7 @@ static irqreturn_t syna_dev_isr(int irq, void *data)
 
 	/* report input event only when receiving a touch report */
 
+	pr_err("XXX: pre touch");
 	if (code == REPORT_TOUCH) {
 		/* parse touch report once received */
 		retval = syna_tcm_parse_touch_report(tcm->tcm_dev,
@@ -1467,6 +1469,7 @@ static irqreturn_t syna_dev_isr(int irq, void *data)
 			goto exit;
 		}
 		/* forward the touch event to system */
+		pr_err("XXX: report touch input events");
 		syna_dev_report_input_events(tcm);
 	}
 
