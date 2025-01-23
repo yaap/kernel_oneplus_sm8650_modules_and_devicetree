@@ -564,7 +564,7 @@ static int find_level_to_current(int val, struct current_level *table, int len)
 
 int oplus_vooc_check_abnormal_power_for_error_count(struct oplus_chg_vooc *chip)
 {
-	int abnormal_power;
+	int abnormal_power = -1;
 
 	if (chip->support_abnormal_over_80w_adapter)
 		abnormal_power = sid_to_adapter_power(chip->sid);
@@ -779,6 +779,28 @@ static void oplus_vooc_set_online(struct oplus_chg_vooc *chip, bool online)
 	if (!chip->vooc_online && !chip->vooc_online_keep)
 		oplus_vooc_cpa_switch_end(chip);
 	chg_info("vooc_online = %s\n", online ? "true" : "false");
+}
+static void oplus_vooc_deep_ratio_limit_curr(struct oplus_chg_vooc *chip)
+{
+	union mms_msg_data data = { 0 };
+	int rc;
+
+	if (chip == NULL) {
+		chg_err("chip is NULL\n");
+		return;
+	}
+
+	rc = oplus_mms_get_item_data(chip->gauge_topic, GAUGE_ITEM_RATIO_LIMIT_CURR, &data, true);
+	if (rc < 0)
+		return;
+
+	if (data.intval <= 0) {
+		chg_err("get ratio limit curr error, data.intval=%d\n", data.intval);
+		return;
+	}
+
+	chg_info("ration limit curr: %d", data.intval);
+	vote(chip->vooc_curr_votable, DEEP_RATIO_LIMIT_VOTER, true, data.intval, false);
 }
 
 static void oplus_vooc_set_online_keep(struct oplus_chg_vooc *chip, bool keep)
@@ -1659,6 +1681,7 @@ static void oplus_vooc_switch_check_work(struct work_struct *work)
 			chg_info("abnormal over_80w adapter dis cnt is %d >= vooc_max, switch to noraml and clear the count \n",
 				  chip->abnormal_adapter_dis_cnt);
 			chip->abnormal_adapter_dis_cnt = 0;
+			oplus_chg_clear_abnormal_adapter_var(chip);
 			if (oplus_chg_vooc_get_switch_mode(chip->vooc_ic) !=
 			    VOOC_SWITCH_MODE_NORMAL) {
 				switch_normal_chg(chip->vooc_ic);
@@ -1674,6 +1697,7 @@ static void oplus_vooc_switch_check_work(struct work_struct *work)
 		chg_info("abnormal adapter dis cnt is %d >= vooc_max, switch to noraml and clear the count\n",
 			  chip->abnormal_adapter_dis_cnt);
 		chip->abnormal_adapter_dis_cnt = 0;
+		oplus_chg_clear_abnormal_adapter_var(chip);
 		if (oplus_chg_vooc_get_switch_mode(chip->vooc_ic) !=
 		    VOOC_SWITCH_MODE_NORMAL) {
 			switch_normal_chg(chip->vooc_ic);
@@ -2988,6 +3012,7 @@ static void oplus_vooc_fastchg_work(struct work_struct *work)
 		chip->adapter_model_factory = false;
 		oplus_vooc_set_online(chip, true);
 		oplus_vooc_set_online_keep(chip, true);
+		oplus_vooc_deep_ratio_limit_curr(chip);
 		chip->temp_over_count = 0;
 		oplus_gauge_lock();
 		if (oplus_vooc_is_allow_fast_chg(chip)) {
@@ -3626,6 +3651,7 @@ static void oplus_vooc_plugin_work(struct work_struct *work)
 			     false, 0, false);
 		}
 		/* USER_VOTER and HIDL_VOTER need to be invalid when the usb is unplugged */
+		vote(chip->vooc_curr_votable, DEEP_RATIO_LIMIT_VOTER, false, 0, false);
 		vote(chip->vooc_curr_votable, USER_VOTER, false, 0, false);
 		vote(chip->vooc_curr_votable, HIDL_VOTER, false, 0, false);
 		vote(chip->vooc_curr_votable, SLOW_CHG_VOTER, false, 0, false);

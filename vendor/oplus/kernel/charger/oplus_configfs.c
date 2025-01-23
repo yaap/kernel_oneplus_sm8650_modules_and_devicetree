@@ -2630,25 +2630,34 @@ static ssize_t adapter_power_store(struct device *dev, struct device_attribute *
 }
 static DEVICE_ATTR_RW(adapter_power);
 
+int __attribute__((weak)) oplus_abnormal_adapter_disconnect_keep(void)
+{
+	return 0;
+}
+
 static int protocol_type_by_user = -1;
 static ssize_t protocol_type_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct oplus_chg_chip *chip = NULL;
 	int fast_chg_type = CHARGER_SUBTYPE_DEFAULT;
+	static int last_fast_chg_type = CHARGER_SUBTYPE_DEFAULT;
 	int subtype = CHARGER_SUBTYPE_DEFAULT;
 	int rc = 0;
 	bool wls_online = false;
 	bool vooc_online = false;
-	union oplus_chg_mod_propval pval = {
-		0,
-	};
+	static int pre_fast_chg_type = CHARGER_SUBTYPE_DEFAULT;
+	union oplus_chg_mod_propval pval = {0, };
 
 	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_common_dir);
 	if (!chip) {
 		chg_err("chip is NULL\n");
 		return -EINVAL;
 	}
+
+	if ((last_fast_chg_type != CHARGER_SUBTYPE_DEFAULT) &&
+		oplus_quirks_keep_connect_status() == 1)
+		return sprintf(buf, "%d\n", last_fast_chg_type);
 
 	if ((oplus_vooc_get_fastchg_started() == true) ||
 		(oplus_vooc_get_fastchg_to_normal() == true) ||
@@ -2664,6 +2673,9 @@ static ssize_t protocol_type_show(struct device *dev,
 			fast_chg_type = CHARGER_SUBTYPE_FASTCHG_SVOOC;
 		else
 			fast_chg_type = CHARGER_SUBTYPE_FASTCHG_VOOC;
+		pre_fast_chg_type = fast_chg_type;
+	} else if (oplus_abnormal_adapter_disconnect_keep()) {
+		fast_chg_type = pre_fast_chg_type;
 	} else {
 		fast_chg_type = subtype;
 	}
@@ -2683,13 +2695,13 @@ static ssize_t protocol_type_show(struct device *dev,
 				fast_chg_type = CHARGER_SUBTYPE_FASTCHG_SVOOC;
 			else
 				fast_chg_type = CHARGER_SUBTYPE_DEFAULT;
-		} else {
-			fast_chg_type = CHARGER_SUBTYPE_DEFAULT;
 		}
 	}
 
 	if (protocol_type_by_user > 0)
 		fast_chg_type = protocol_type_by_user;
+
+	last_fast_chg_type = fast_chg_type;
 
 	return sprintf(buf, "%d\n", fast_chg_type);
 }
@@ -2716,16 +2728,21 @@ static ssize_t ui_power_show(struct device *dev,
 	int adapter_power = 0;
 	int project_power = 0;
 	int ui_power = 0;
+	static int last_ui_power = -1;
 	int pps_or_ufcs_power = 0;
 	bool ufcs_online = false;
 	bool pps_online = false;
 	struct oplus_chg_chip *chip = NULL;
+	static int pre_ui_power = 0;
 
 	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_common_dir);
 	if (!chip) {
 		chg_err("chip is NULL\n");
 		return -EINVAL;
 	}
+
+	if ((last_ui_power != -1) && oplus_quirks_keep_connect_status() == 1)
+		return sprintf(buf, "%u\n", last_ui_power);
 
 	if (fast_chg_type_by_user > 0)
 		adapter_power = oplus_get_vooc_adapter_power(fast_chg_type_by_user) * 1000;
@@ -2754,6 +2771,13 @@ static ssize_t ui_power_show(struct device *dev,
 
 	if (ui_power_by_user > 0)
 		ui_power = ui_power_by_user;
+
+	if (oplus_abnormal_adapter_disconnect_keep())
+		ui_power = pre_ui_power;
+	else if (ui_power != 0)
+		pre_ui_power = ui_power;
+
+	last_ui_power = ui_power;
 
 	chg_info("ui_power_show: %d %d %d %d %d %d %d\n",
 		adapter_power, project_power, ufcs_online, pps_online,
@@ -2830,6 +2854,7 @@ static ssize_t cpa_power_show(struct device *dev,
 	bool ufcs_online = false;
 	bool pps_online = false;
 	struct oplus_chg_chip *chip = NULL;
+	static int pre_cpa_power = 0;
 
 	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_common_dir);
 	if (!chip) {
@@ -2859,6 +2884,11 @@ static ssize_t cpa_power_show(struct device *dev,
 
 	if (cpa_power_by_user > 0)
 		cpa_power = cpa_power_by_user;
+
+	if (oplus_abnormal_adapter_disconnect_keep())
+		cpa_power = pre_cpa_power;
+	else if (cpa_power != 0)
+		pre_cpa_power = cpa_power;
 
 	return sprintf(buf, "%u\n", cpa_power);
 }
@@ -3143,6 +3173,7 @@ static ssize_t read_gauge_reg_show(struct device *dev,
 #define CHG_UP_PAGE_SIZE 128
 #define PARMS_LEN 10
 #define SEPRATOR_SIGN ","
+static char chg_up_buf[CHG_UP_PAGE_SIZE] = {0};
 int oplus_update_chg_up_limit_parms(struct oplus_chg_chip *chip, const char *buf)
 {
 	int ret = 0;
@@ -3164,6 +3195,7 @@ int oplus_update_chg_up_limit_parms(struct oplus_chg_chip *chip, const char *buf
 		return -EINVAL;
 	}
 	strncpy(temp_buf, buf, strlen(buf));
+	strncpy(chg_up_buf, buf, strlen(buf));
 
 	while ((*buf_temp != '\0') && (n < 10)) {
 		if (n >= PARMS_LEN) {
@@ -3220,7 +3252,20 @@ static ssize_t chg_up_limit_store(struct device *dev, struct device_attribute *a
 
 	return count;
 }
-DEVICE_ATTR_WO(chg_up_limit);
+
+static ssize_t chg_up_limit_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct oplus_configfs_device *chip = dev->driver_data;
+
+	if (!chip) {
+		chg_err("chip is NULL\n");
+		return -EINVAL;
+	}
+
+	return sprintf(buf, "%s\n", chg_up_buf);
+}
+
+DEVICE_ATTR_RW(chg_up_limit);
 
 static ssize_t read_gauge_reg_store(struct device *dev,
 					struct device_attribute *attr,
@@ -3246,6 +3291,42 @@ static ssize_t read_gauge_reg_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(read_gauge_reg);
 
+static ssize_t non_standard_chg_switch_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct oplus_chg_chip *chip = NULL;
+	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_common_dir);
+
+	if (!chip) {
+		chg_err("chip is NULL\n");
+		return -EINVAL;
+	}
+
+	return sprintf(buf, "%d\n", chip->non_standard_chg_switch);
+}
+
+static ssize_t non_standard_chg_switch_store(struct device *dev, struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	int val = 0;
+	struct oplus_chg_chip *chip = NULL;
+
+	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_common_dir);
+	if (!chip) {
+		chg_err("chip is NULL\n");
+		return -EINVAL;
+	}
+
+	if (kstrtos32(buf, 0, &val)) {
+		chg_err("buf error\n");
+		return -EINVAL;
+	}
+
+	chip->non_standard_chg_switch = val;
+	chg_info("rus value store, rus switch = %d\n", chip->non_standard_chg_switch);
+	return count;
+}
+static DEVICE_ATTR_RW(non_standard_chg_switch);
+
 static struct device_attribute *oplus_common_attributes[] = {
 #ifdef OPLUS_CHG_ADB_ROOT_ENABLE
 	&dev_attr_charge_parameter,
@@ -3269,6 +3350,7 @@ static struct device_attribute *oplus_common_attributes[] = {
 	&dev_attr_device_power,
 	&dev_attr_cpa_power,
 	&dev_attr_chg_up_limit,
+	&dev_attr_non_standard_chg_switch,
 	NULL
 };
 #ifdef OPLUS_FEATURE_CHG_BASIC
