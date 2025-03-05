@@ -38,6 +38,7 @@
 #include "../oplus/oplus_display_panel_common.h"
 #include "../oplus/oplus_display_panel.h"
 #include "../oplus/oplus_display_interface.h"
+#include "../oplus/oplus_bl.h"
 #include <soc/oplus/system/oplus_project.h>
 #endif /* OPLUS_FEATURE_DISPLAY */
 
@@ -863,6 +864,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		 */
 		if (display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
 			flags |= DSI_CTRL_CMD_CUSTOM_DMA_SCHED;
+#ifdef OPLUS_FEATURE_DISPLAY
+			//MIPI_DCS_SET_DISPLAY_BRIGHTNES
+			if ((display->panel->oplus_priv.vidmode_backlight_async_wait_enable)
+				&& (atomic_read(&display->panel->vidmode_backlight_async_wait))
+				&& (((unsigned char*)(msg->tx_buf))[0] == 0x51)) {
+				flags |= DSI_CTRL_CMD_ASYNC_WAIT;
+			}
+#endif /* OPLUS_FEATURE_DISPLAY */
 		} else {
 			if (msg->flags & MIPI_DSI_MSG_CMD_DMA_SCHED)
 				flags |= DSI_CTRL_CMD_CUSTOM_DMA_SCHED;
@@ -1246,6 +1255,12 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 #ifdef OPLUS_FEATURE_DISPLAY
 	if (atomic_read(&panel->esd_pending)) {
 		DSI_WARN("Skip the check because esd is pending\n");
+		if (!strcmp(dsi_display->panel->name, "AB964 p 1 A0017 dsc video mode panel")) {
+			if (dsi_display->panel->oplus_priv.set_backlight_not_do_esd_reg_read_enable
+			&& dsi_display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
+				atomic_set(&panel->esd_pending, 0);
+			}
+		}
 		goto release_panel_lock;
 	}
 	if (panel->power_mode != SDE_MODE_DPMS_ON) {
@@ -9400,6 +9415,8 @@ int dsi_display_enable(struct dsi_display *display)
 		oplus_display_update_current_display();
 		__oplus_set_power_status(OPLUS_DISPLAY_POWER_ON);
 		display->panel->power_mode = SDE_MODE_DPMS_ON;
+		/* Force update of demurra2 offset from UEFI stage to Kernel stage*/
+		oplus_panel_need_to_set_demura2_offset(display->panel);
 #endif /* OPLUS_FEATURE_DISPLAY */
 		return 0;
 	}
@@ -9424,6 +9441,8 @@ int dsi_display_enable(struct dsi_display *display)
 		}
 #ifdef OPLUS_FEATURE_DISPLAY
 		oplus_display_update_current_display();
+		/* Force update of demurra2 offset when panel power on*/
+		oplus_panel_need_to_set_demura2_offset(display->panel);
 		oplus_panel_switch_vid_mode(display, mode);
 #endif /* OPLUS_FEATURE_DISPLAY */
 #ifdef OPLUS_FEATURE_DISPLAY_ADFR
